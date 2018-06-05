@@ -15,7 +15,7 @@ void setup()
   
   Serial.begin(115200);
   CAN0.begin(CAN_500KBPS);                       // init can bus : baudrate = 500k 
-  Serial.println("MCP2515 Library Receive Example...");
+  Serial.println("MCP2515 Initialized");
 }
 
 void loop()
@@ -35,6 +35,7 @@ void loop()
         Serial.print(" ");
       }
       Serial.println();
+      delay(10);                                // Display available for every 10 milliseconds
     
 }
 

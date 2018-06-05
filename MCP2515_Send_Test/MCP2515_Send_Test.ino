@@ -53,7 +53,9 @@ void loop()
     txmsg[5] = (TXCount & 0x00FF0000) >> 16;
     txmsg[6] = (TXCount & 0x0000FF00) >>  8;
     txmsg[7] = (TXCount & 0x000000FF);
-  CAN0.sendMsgBuf(0x00, 0, 8, txmsg);  
+
+    //Send messaeg in format: ID, Standard (0) or Extended ID (1), message length, txmsg
+  CAN0.sendMsgBuf(0x18FEF100, 1, 8, txmsg);  
 
   //Toggle LED light as messages are sent
   LED_state = !LED_state;                       
