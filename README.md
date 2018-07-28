@@ -13,3 +13,6 @@ Test codes used to send/receive CAN message periodically on both channels CAN0 a
 
 ### MCP2515 
 test codes used to send/receive CAN message periodically through third CAN channel using MCP library. The library can be accessed here: https://github.com/Heavy-Vehicle-Networking-At-U-Tulsa/NMFTA-CAN-Logger/tree/master/Arduino_Libraries_to_Install/MCP2515
+
+## Acknowledgements 
+This material is based upon work supported by the National Science Foundation under Grant No. 1715409.
