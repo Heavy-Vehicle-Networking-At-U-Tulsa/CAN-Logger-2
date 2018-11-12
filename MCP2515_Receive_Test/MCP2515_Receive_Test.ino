@@ -2,28 +2,33 @@
 #include <mcp_can.h>
 #include <SPI.h>
 
-long unsigned int rxId;
-unsigned char len = 0;
-unsigned char rxBuf[8];
+INT32U rxId;
+INT8U len = 0;
+INT8U rxBuf[8];
+INT8U ext;
 
-
-MCP_CAN CAN0(15);                               // Set CS to pin 15
-
+// Set CS to pin 15, acording to schematics
+#define CS_CAN 15
+MCP_CAN CAN0(CS_CAN);  
 
 void setup()
 {
-  
+  pinMode(2,OUTPUT);
+  digitalWrite(2,HIGH);
   Serial.begin(115200);
-  CAN0.begin(CAN_500KBPS);                       // init can bus : baudrate = 500k 
+  // Initialize MCP2515 running at 16MHz with a baudrate of 500kb/s and the masks and filters disabled.
+  if(CAN0.begin(MCP_ANY, CAN_250KBPS, MCP_16MHZ) == CAN_OK) Serial.println("MCP2515 Initialized Successfully!");
+  else Serial.println("Error Initializing MCP2515...");
+
+  CAN0.setMode(MCP_NORMAL);
   Serial.println("MCP2515 Initialized");
 }
 
 void loop()
 {
-      CAN0.readMsgBuf(&len, rxBuf);              // Read data: len = data length, buf = data byte(s)
-      rxId = CAN0.getCanId();                    // Get message ID
-      Serial.print("ID: ");
-      Serial.print(rxId, HEX);
+  if (CAN0.readMsgBuf(&rxId, &ext, &len, rxBuf) == CAN_OK){             // Read data: len = data length, buf = data byte(s)
+    Serial.print("ID: ");
+    Serial.print(rxId, HEX);
       Serial.print("  Data: ");
       for(int i = 0; i<len; i++)                // Print each byte of the data
       {
@@ -36,6 +41,6 @@ void loop()
       }
       Serial.println();
       delay(10);                                // Display available for every 10 milliseconds
-    
+  }
 }
 
