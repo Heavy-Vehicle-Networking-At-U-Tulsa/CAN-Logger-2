@@ -1,14 +1,13 @@
 //Include MCP and SPI library
 #include <mcp_can.h>
-#include <SPI.h>
 
 // Set CS to pin 15, acording to schematics
 #define CS_CAN 15
-MCP_CAN CAN0(CS_CAN);                                     
+MCP_CAN CAN2(CS_CAN);                                     
 
 //Set up timing variables
-#define TXPeriod100 100
-elapsedMillis TXTimer100;
+#define TXPeriod2 100
+elapsedMillis TXTimer2;
 
 //Counter to keep track
 uint32_t TXCount = 0;
@@ -25,24 +24,23 @@ void setup()
   pinMode(green_LED, OUTPUT);
   digitalWrite(green_LED,HIGH);
   pinMode(red_LED, OUTPUT);
-  pinMode(2,OUTPUT);
-  digitalWrite(2,HIGH);
-  while(!Serial);
+  
   Serial.write("Starting CAN Send Test.");
-  // init can bus, baudrate: 500k
+  
   // Initialize MCP2515 running at 16MHz with a baudrate of 500kb/s and the masks and filters disabled.
-  if(CAN0.begin(MCP_ANY, CAN_250KBPS, MCP_16MHZ) == CAN_OK) Serial.println("MCP2515 Initialized Successfully!");
+  if(CAN2.begin(MCP_ANY, CAN_250KBPS, MCP_16MHZ) == CAN_OK) Serial.println("MCP2515 Initialized Successfully!");
   else Serial.println("Error Initializing MCP2515...");
-  CAN0.enOneShotTX();
-  CAN0.setMode(MCP_NORMAL);
+  
+  CAN2.enOneShotTX();
+  CAN2.setMode(MCP_NORMAL);
 }
 //Data to send
 byte txmsg[8];     //8 bytes
 
 void loop()
 {
-  if (TXTimer100 >= TXPeriod100){
-    TXTimer100 = 0; //Reset timer
+  if (TXTimer2 >= TXPeriod2){
+    TXTimer2 = 0; //Reset timer
 
   //Convert the 32-bit timestamp into 4 bytes with the most significant byte (MSB) first (Big endian).
     uint32_t sysMicros = micros();
@@ -59,7 +57,7 @@ void loop()
     txmsg[7] = (TXCount & 0x000000FF);
 
     //Send messaeg in format: ID, Standard (0) or Extended ID (1), message length, txmsg
-    CAN0.sendMsgBuf(0x18FEF100, 1, 8, txmsg);  
+    CAN2.sendMsgBuf(0x18FEF100, 1, 8, txmsg);  
 
     //Toggle LED light as messages are sent
     LED_state = !LED_state;                       
