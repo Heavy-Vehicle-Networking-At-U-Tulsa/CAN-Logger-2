@@ -1,6 +1,4 @@
-#include <SPI.h>
-#include <Adafruit_WINC1500.h>
-#include <Adafruit_WINC1500Udp.h>
+#include <WiFi101.h>
 
 //Define w1 and w2 as analog output to control the BLDC
 const int w1 = 6;
