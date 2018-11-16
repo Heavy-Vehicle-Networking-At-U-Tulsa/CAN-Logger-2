@@ -4,6 +4,8 @@
 #include <FlexCAN.h>
 
 //Define transmit message from FlexCAN library
+// These messages are intended to be sent to the MCP_CAN device on the same board with 
+// by connecting all the can channels together
 static CAN_message_t txmsg, rxmsg;
 uint32_t TXCount, RXCount;
 
