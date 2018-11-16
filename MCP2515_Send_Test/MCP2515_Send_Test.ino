@@ -3,7 +3,8 @@
 #include <SPI.h>
 
 // Set CS to pin 15, acording to schematics
-MCP_CAN CAN0(15);                                     
+#define CS_CAN 15
+MCP_CAN CAN0(CS_CAN);                                     
 
 //Set up timing variables
 #define TXPeriod100 100
@@ -19,26 +20,29 @@ boolean LED_state;
 
 void setup()
 {
+  pinMode(CS_CAN, OUTPUT);
+  digitalWrite(CS_CAN,HIGH);
   pinMode(green_LED, OUTPUT);
+  digitalWrite(green_LED,HIGH);
   pinMode(red_LED, OUTPUT);
-  Serial.begin(115200);
+  pinMode(2,OUTPUT);
+  digitalWrite(2,HIGH);
+  while(!Serial);
+  Serial.write("Starting CAN Send Test.");
   // init can bus, baudrate: 500k
-  if(CAN0.begin(CAN_500KBPS) == CAN_OK){
-    Serial.print("can init ok!!\r\n");
-    digitalWrite(red_LED,HIGH); //Red LED on when succesful
-  }
-  else {
-    Serial.print("Can init fail!!\r\n");
-    digitalWrite(red_LED,LOW); //Red LED off when failed
-  }
+  // Initialize MCP2515 running at 16MHz with a baudrate of 500kb/s and the masks and filters disabled.
+  if(CAN0.begin(MCP_ANY, CAN_250KBPS, MCP_16MHZ) == CAN_OK) Serial.println("MCP2515 Initialized Successfully!");
+  else Serial.println("Error Initializing MCP2515...");
+  CAN0.enOneShotTX();
+  CAN0.setMode(MCP_NORMAL);
 }
 //Data to send
 byte txmsg[8];     //8 bytes
 
 void loop()
 {
- if (TXTimer100>= TXPeriod100){
-  TXTimer100 = 0; //Reset timer
+  if (TXTimer100 >= TXPeriod100){
+    TXTimer100 = 0; //Reset timer
 
   //Convert the 32-bit timestamp into 4 bytes with the most significant byte (MSB) first (Big endian).
     uint32_t sysMicros = micros();
@@ -55,13 +59,14 @@ void loop()
     txmsg[7] = (TXCount & 0x000000FF);
 
     //Send messaeg in format: ID, Standard (0) or Extended ID (1), message length, txmsg
-  CAN0.sendMsgBuf(0x18FEF100, 1, 8, txmsg);  
+    CAN0.sendMsgBuf(0x18FEF100, 1, 8, txmsg);  
 
-  //Toggle LED light as messages are sent
-  LED_state = !LED_state;                       
-  digitalWrite(green_LED,LED_state);
+    //Toggle LED light as messages are sent
+    LED_state = !LED_state;                       
+    digitalWrite(green_LED,LED_state);
 
-  //Print on serial for every sent message
-    Serial.println("Message Sent");
-}
+    //Print on serial for every sent message
+    Serial.print("Message Sent: ");
+    Serial.println(TXCount);
+  }
 }
