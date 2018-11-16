@@ -1,0 +1,6 @@
+[submodule "FlexCAN_Library"]
+	path = FlexCAN_Library
+	url = git@github.com:Heavy-Vehicle-Networking-At-U-Tulsa/FlexCAN_Library.git
+[submodule "MCP_CAN_lib"]
+	path = MCP_CAN_lib
+	url = git@github.com:Heavy-Vehicle-Networking-At-U-Tulsa/MCP_CAN_lib.git
