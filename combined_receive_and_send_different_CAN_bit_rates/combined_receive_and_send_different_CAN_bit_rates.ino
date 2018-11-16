@@ -1,4 +1,4 @@
-//Include MCP and SPI library
+//Include MCP library
 #include <mcp_can.h>
 #include <Bounce2.h>
 #include <FlexCAN.h>
@@ -165,11 +165,11 @@ void loop()
     Serial.print("Message Sent: ");
     Serial.println(TXCount);
   }
-  while (Can0.available()) {
+  if (Can0.available()) {
     Can0.read(rxmsg);
     printFrame(rxmsg,0,RXCount0++);
   }
-  while (Can1.available()) {
+  if (Can1.available()) {
     Can1.read(rxmsg);
     printFrame(rxmsg,1,RXCount1++);
   }
