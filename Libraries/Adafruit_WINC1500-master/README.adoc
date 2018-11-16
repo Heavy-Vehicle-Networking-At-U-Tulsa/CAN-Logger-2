@@ -1,5 +1,0 @@
-
-= This fork is deprecated! Please use WiFi101, which now has pin-setting support Thank you! :) =
-
-   * WiFi101 is available here https://github.com/arduino-libraries/WiFi101
-   * Usage with Adafruit WINC1500 breakouts and such is covered here https://learn.adafruit.com/adafruit-atwinc1500-wifi-module-breakout/wiring-and-test
