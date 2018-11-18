@@ -48,8 +48,17 @@ Test code used to turn on three LEDs by pushing the button. The sketch makes use
 #define button 21
 ```
 
-### Dual CAN channels 
+### Test_CAN0_and_CAN1 
 Test codes used to send/receive CAN message periodically on both channels CAN0 and CAN1 using FLEX CAN library. The library can be accessed here: https://github.com/Heavy-Vehicle-Networking-At-U-Tulsa/FlexCAN_Library
+
+This makes use of the following defines for the Silent Pins on the transceivers:
+```
+#define SILENT_0 39
+#define SILENT_1 38
+#define SILENT_2 37
+```
+Pull the silent pins low for transmission.
+
 
 ### MCP2515 
 test codes used to send/receive CAN message periodically through third CAN channel using MCP library. The library can be accessed here: https://github.com/Heavy-Vehicle-Networking-At-U-Tulsa/NMFTA-CAN-Logger/tree/master/Arduino_Libraries_to_Install/MCP2515
