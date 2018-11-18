@@ -1,13 +1,13 @@
 /*
  * NMFTA CAN Logger Project
  * 
- * Arduino Sketch to test the ability to receive CAN messages
+ * Arduino Sketch to test the ability to receive and log CAN messages
  * 
  * Written By Dr. Jeremy S. Daily
  * The University of Tulsa
  * Department of Mechanical Engineering
  * 
- * 11 Nov 2018
+ * 18 Nov 2018
  * 
  * Released under the MIT License
  *
@@ -32,15 +32,15 @@
  * SOFTWARE.
  * 
  * 
- * This program logs data to a binary file.  Functions are included
- * to convert the binary file to a csv text file.
- *
+ * This program logs data to a binary file.  
+ * 
  * Samples are logged at regular intervals.  The maximum logging rate
  * depends on the quality of your SD card. 
  * 
- * Data is written to the file using a SD multiple block write command.
  * 
  * Much of this sketch was inspired by the examples from https://github.com/greiman/SdFat
+ * 
+ * The program makes use of the SDFatSdioEX library
  * 
  */
 
@@ -52,34 +52,28 @@
 #include <Bounce2.h>
 #include <TimeLib.h>
 
-// Instantiate a Bounce object
+// Instantiate a Bounce object to debounce the pushbutton
 Bounce debouncer = Bounce(); 
 
+// Set up the SD Card object
 SdFatSdioEX sd;
 
-File binFile;
+// Create a file object
+SdBaseFile binFile;
 
-static CAN_message_t rxmsg;
+// All CAN messages are received in the FlexCAN structure
+CAN_message_t rxmsg;
 
-//Define CAN TXRX Transmission Silent pins
-#define SILENT_0 39
-#define SILENT_1 38
-#define SILENT_2 37
+// Define CAN TXRX Transmission Silent pins
+// See the CAN Logger 2 Schematic for the source pins
+#define SILENT_0   39
+#define SILENT_1   38
+#define SILENT_2   37
 #define CAN_SWITCH 2
 #define BUTTON_PIN 21
 
 
-// CAN Bit rates
-#define num_rates 5
-uint8_t rate_index = 0;
-uint8_t current_mcp_baud_rate = CAN_250KBPS;
-uint8_t mcp_baudrate_list[num_rates] = {CAN_250KBPS, CAN_500KBPS, CAN_125KBPS, CAN_666KBPS, CAN_1000KBPS};
-uint32_t current_can0_baud_rate = 250000;
-uint32_t current_can1_baud_rate = 250000;
-uint32_t flexcan_baudrate_list[num_rates] = {250000, 500000, 125000, 666666, 1000000};
-
-
-// Set CS to pin 15, acording to schematics
+// Set CS to pin 15, according to schematics
 #define CS_CAN 15
 MCP_CAN Can2(CS_CAN); 
 
@@ -87,7 +81,6 @@ elapsedMicros microsecondsPerSecond;
 elapsedMillis lastCANmessageTimer;
 elapsedMillis LEDblinkTimer;
 elapsedMillis txTimer;
-elapsedMillis displayCounter;
 
 //Set LEDs
 #define green_LED 6
@@ -98,13 +91,11 @@ boolean green_LED_state;
 boolean red_LED_state;
 boolean yellow_LED_state;
 
-//set up a display buffer
-char displayBuffer[100]; 
-char serialInput;
-
+// Setup a counter to keep track of the filename
 uint16_t current_file;
-
+// Keep track of the CAN Channel (0, 1, or 2, where 2 is MCP CAN)
 uint8_t current_channel;
+//There are 2 data buffers that get switched
 uint8_t current_buffer;
 uint16_t current_position;
 
@@ -121,6 +112,9 @@ uint32_t RXCount0 = 0;
 uint32_t RXCount1 = 0;
 
 void load_buffer(){
+  // reset the timer
+  lastCANmessageTimer = 0;
+  
   data_buffer[current_buffer][current_position] = current_channel;
   current_position += 1;
   
@@ -144,6 +138,37 @@ void load_buffer(){
   current_position += 8;
 }
 
+/*  code to process time sync messages from the serial port   */
+#define TIME_HEADER  "T"   // Header tag for serial time sync message
+#define DEFAULT_TIME  1357041600 // Jan 1 2013 
+
+uint32_t processSyncMessage() {
+  uint32_t pctime = 0L;
+  
+  if(Serial.find(TIME_HEADER)) {
+     pctime = Serial.parseInt();
+     if( pctime < DEFAULT_TIME) { // check the value is a valid time (greater than Jan 1 2013)
+       pctime = 0L; // return 0 to indicate that the time is not valid
+     }
+  }
+  return pctime;
+}
+
+time_t getTeensy3Time(){
+  microsecondsPerSecond = 0;
+  return Teensy3Clock.get();
+}
+
+void dateTime(uint16_t* FATdate, uint16_t* FATtime) {
+  // User gets date and time from GPS or real-time
+  // clock in real callback function
+
+  // return date using FAT_DATE macro to format fields
+  *FATdate = FAT_DATE(year(), month(), day());
+
+  // return time using FAT_TIME macro to format fields
+  *FATtime = FAT_TIME(hour(), minute(), second());
+}
 
 void send_mcp_messages(){
   //if (txTimer >= 10){
@@ -165,7 +190,7 @@ void send_mcp_messages(){
     txmsg[7] = (TXCount & 0x000000FF);
     
     //Send messaeg in format: ID, Standard (0) or Extended ID (1), message length, txmsg
-    Can2.sendMsgBuf(0x1CFEFE00, 1, 8, txmsg);  
+    Can2.sendMsgBuf(0x1CFEFE00, 1, 1, txmsg);  
     
     //Toggle LED light as messages are sent
     red_LED_state = !red_LED_state;                       
@@ -196,14 +221,20 @@ void printFrame(CAN_message_t rxmsg, uint8_t channel, uint32_t RXCount)
 void errorFlash(){
   while(true){
     digitalWrite(red_LED,HIGH);
-    delay(10);
+    delay(50);
     digitalWrite(red_LED,LOW);
-    delay(10);
+    delay(50);
   }
 }
 
 void setup(void) {
 
+  char prefix[5];
+  sprintf(prefix,"CAN2");
+  memcpy(&data_buffer[0][0], &prefix, 4);
+  memcpy(&data_buffer[1][0], &prefix, 4);
+  current_position = 4;
+  
   pinMode(SILENT_0,OUTPUT);
   pinMode(SILENT_1,OUTPUT);
   pinMode(SILENT_2,OUTPUT);
@@ -234,11 +265,11 @@ void setup(void) {
   digitalWrite(CAN_SWITCH,LOW);
 
   while(!Serial);
-  Serial.write("Starting CAN logger.");
+  Serial.println("Starting CAN logger.");
   
   //Initialize the CAN channels
-  Can0.begin(250000);
-  Can1.begin(250000);
+  Can0.begin(1000000);
+  Can1.begin(1000000);
   
   //The default filters exclude the extended IDs, so we have to set up CAN filters to allow those to pass.
   CAN_filter_t allPassFilter;
@@ -248,11 +279,24 @@ void setup(void) {
     Can1.setFilter(allPassFilter,filterNum); 
   }
   // Setup MCP CAN
-  if(Can2.begin(MCP_ANY, CAN_250KBPS, MCP_16MHZ) == CAN_OK) Serial.println("MCP2515 Initialized Successfully!");
+  if(Can2.begin(MCP_ANY, CAN_1000KBPS, MCP_16MHZ) == CAN_OK) Serial.println("MCP2515 Initialized Successfully!");
   else Serial.println("Error Initializing MCP2515...");
   Can2.setMode(MCP_NORMAL);
   
-
+  setSyncProvider(getTeensy3Time);
+  if (timeStatus()!= timeSet) {
+    Serial.println("Unable to sync with the RTC");
+  } else {
+    Serial.println("RTC has set the system time");
+  }
+  setSyncInterval(1);
+  char timeString[32];
+  sprintf(timeString,"%04d-%02d-%02d %02d:%02d:%02d.%06d",year(),month(),day(),hour(),minute(),second(),uint32_t(microsecondsPerSecond));
+  Serial.println(timeString);
+  
+   // set date time callback function
+  File::dateTimeCallback(dateTime);
+  
   if (!sd.begin()) {
       Serial.println("SdFatSdioEX begin() failed");
       errorFlash();
@@ -260,7 +304,7 @@ void setup(void) {
   
   sd.chvol();
   
-
+ 
 }
 
 void open_binFile(){
@@ -283,22 +327,33 @@ void close_binFile(){
 void loop(void) {
   // keep watching the push button:
   debouncer.update();
-  // Get the updated value :
+
+  // Perform logging operation based on the button push.
+  // This assumes all the CAN Channels are connected together.
   if (debouncer.fell()) open_binFile();
-  if (debouncer.rose()) close_binFile();
-  
-  if ( !debouncer.read() ) send_mcp_messages();
-  
+  else if (debouncer.rose()) close_binFile();
+  else if (!debouncer.read() ) send_mcp_messages();
+
+  //Check to see if there is anymore room in the buffer
   if (current_position >= BUFFER_POSITION_LIMIT){ //20 messages
-    current_position = 0;
+    uint32_t start_micros = micros();
+    current_position = 4; //Let the first four bytes remain the same
     if (BUFFER_SIZE != binFile.write(data_buffer[current_buffer], BUFFER_SIZE)) {
       Serial.println("write failed");
     }
+
+    //Record write times
+    uint32_t elapsed_micros = micros() - start_micros;
+    memcpy(&data_buffer[current_buffer][508], &elapsed_micros, 4);
+    
     current_buffer += 1;
     current_buffer = current_buffer % 2; // Switch back to zero if the value is 2
     //Toggle LED to show SD card writing
     yellow_LED_state = !yellow_LED_state;
     digitalWrite(yellow_LED,yellow_LED_state);
+    
+    
+    
   }
   
   if (Can0.read(rxmsg)){
@@ -309,7 +364,8 @@ void loop(void) {
   if (Can1.read(rxmsg)){
     current_channel = 1;
     load_buffer();
-    printFrame(rxmsg,1,RXCount1++);
+    //printFrame(rxmsg,1,RXCount1++);
+    
   }
 
   if (LEDblinkTimer >= 500){
@@ -318,4 +374,14 @@ void loop(void) {
     digitalWrite(green_LED, green_LED_state);
   }
 
+  if (lastCANmessageTimer > 5000){
+    lastCANmessageTimer = 0;
+    yellow_LED_state = LOW;
+    digitalWrite(yellow_LED,yellow_LED_state);
+  }
+  
+  if (txTimer >= 1000);
+    txTimer = 0;
+    red_LED_state = LOW;
+    digitalWrite(red_LED,red_LED_state);  
 }
