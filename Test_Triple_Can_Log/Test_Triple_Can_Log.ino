@@ -62,7 +62,7 @@ SdFs sd;
 FsFile binFile;
 
 // All CAN messages are received in the FlexCAN structure
-CAN_message_t rxmsg;
+CAN_message_t rxmsg,txmsg;
 
 // Define CAN TXRX Transmission Silent pins
 // See the CAN Logger 2 Schematic for the source pins
@@ -76,6 +76,11 @@ CAN_message_t rxmsg;
 // Set CS to pin 15, according to schematics
 #define CS_CAN 15
 MCP_CAN Can2(CS_CAN); 
+//variables for the CAN Message
+uint32_t rxId;
+uint8_t len;
+uint8_t rxBuf[8];
+uint8_t ext_flag;
 
 elapsedMicros microsecondsPerSecond;
 elapsedMillis lastCANmessageTimer;
@@ -110,13 +115,16 @@ uint32_t TXCount = 0;
 //Create a counter to keep track of message traffic
 uint32_t RXCount0 = 0;
 uint32_t RXCount1 = 0;
+uint32_t RXCount2 = 0;
 
 boolean file_open;
 
 void load_buffer(){
   // reset the timer
   lastCANmessageTimer = 0;
-  
+  green_LED_state = !green_LED_state;
+  digitalWrite(green_LED, green_LED_state);
+    
   data_buffer[current_buffer][current_position] = current_channel;
   current_position += 1;
   
@@ -138,6 +146,9 @@ void load_buffer(){
 
   memcpy(&data_buffer[current_buffer][current_position], &rxmsg.buf, 8); 
   current_position += 8;
+
+  check_buffer();
+  
 }
 
 /*  code to process time sync messages from the serial port   */
@@ -170,26 +181,34 @@ void dateTime(uint16_t* FSdate, uint16_t* FStime) {
 }
 
 void send_mcp_messages(){
-  //if (txTimer >= 10){
+  if (txTimer >= 1){
     txTimer = 0;
   
     //Convert the 32-bit timestamp into 4 bytes with the most significant byte (MSB) first (Big endian).
     uint32_t sysMicros = micros();
-    byte txmsg[8];
-    txmsg[0] = (sysMicros & 0xFF000000) >> 24;
-    txmsg[1] = (sysMicros & 0x00FF0000) >> 16;
-    txmsg[2] = (sysMicros & 0x0000FF00) >>  8;
-    txmsg[3] = (sysMicros & 0x000000FF);
+    txmsg.buf[0] = (sysMicros & 0xFF000000) >> 24;
+    txmsg.buf[1] = (sysMicros & 0x00FF0000) >> 16;
+    txmsg.buf[2] = (sysMicros & 0x0000FF00) >>  8;
+    txmsg.buf[3] = (sysMicros & 0x000000FF);
     
     //Convert the 32-bit transmit counter into 4 bytes with the most significant byte (MSB) first (Big endian). 
     
-    txmsg[4] = (TXCount & 0xFF000000) >> 24;
-    txmsg[5] = (TXCount & 0x00FF0000) >> 16;
-    txmsg[6] = (TXCount & 0x0000FF00) >>  8;
-    txmsg[7] = (TXCount & 0x000000FF);
+    txmsg.buf[4] = (TXCount & 0xFF000000) >> 24;
+    txmsg.buf[5] = (TXCount & 0x00FF0000) >> 16;
+    txmsg.buf[6] = (TXCount & 0x0000FF00) >>  8;
+    txmsg.buf[7] = (TXCount & 0x000000FF);
     
     //Send messaeg in format: ID, Standard (0) or Extended ID (1), message length, txmsg
-    Can2.sendMsgBuf(0x1CFEFE00, 1, 1, txmsg);  
+    txmsg.id = 0x1CFEFE00;
+    Can0.write(txmsg);
+    TXCount++;
+    
+    txmsg.id = 0x1CFEFE01;
+    Can1.write(txmsg);
+    TXCount++;
+    
+    Can2.sendMsgBuf(0x1CFEFE02, 1, 1, txmsg.buf);  
+    TXCount++;
     
     //Toggle LED light as messages are sent
     red_LED_state = !red_LED_state;                       
@@ -198,8 +217,8 @@ void send_mcp_messages(){
     //Print on serial for every sent message
     Serial.print("Message Sent: ");
     Serial.println(TXCount);
-    TXCount++;
-  //}  
+    
+  }  
 }
 
 
@@ -223,6 +242,50 @@ void errorFlash(){
     delay(50);
     digitalWrite(red_LED,LOW);
     delay(50);
+    if (sd.begin(SdioConfig(FIFO_SDIO))) break; 
+  }
+}
+
+void open_binFile(){
+  current_file++;
+  char filename[200];
+  sprintf(filename,"CAN_%04d.bin",current_file);
+  if (!binFile.open(filename, O_RDWR | O_CREAT)) {
+    Serial.println("open failed");
+    errorFlash();
+  }
+  binFile.truncate(0);
+  file_open = true;
+}
+
+void close_binFile(){
+  binFile.close();
+  delay(100);
+  sd.ls(LS_DATE | LS_SIZE);
+  file_open = false;
+}
+
+void check_buffer(){
+  //Check to see if there is anymore room in the buffer
+  if (current_position >= BUFFER_POSITION_LIMIT){ //20 messages
+    uint32_t start_micros = micros();
+    memcpy(&data_buffer[current_buffer][500], &RXCount0, 4);
+    memcpy(&data_buffer[current_buffer][504], &RXCount1, 4);
+    
+    current_position = 4; //Let the first four bytes remain the same
+    if (BUFFER_SIZE != binFile.write(data_buffer[current_buffer], BUFFER_SIZE)) {
+      Serial.println("write failed");
+    }
+
+    //Record write times
+    uint32_t elapsed_micros = micros() - start_micros;
+    memcpy(&data_buffer[current_buffer][508], &elapsed_micros, 4);
+    
+    current_buffer += 1;
+    current_buffer = current_buffer % 2; // Switch back to zero if the value is 2
+    //Toggle LED to show SD card writing
+    yellow_LED_state = !yellow_LED_state;
+    digitalWrite(yellow_LED,yellow_LED_state);
   }
 }
 
@@ -269,7 +332,10 @@ void setup(void) {
   //Initialize the CAN channels
   Can0.begin(1000000);
   Can1.begin(1000000);
-  
+
+  txmsg.ext = 1;
+  txmsg.len = 8;
+
   //The default filters exclude the extended IDs, so we have to set up CAN filters to allow those to pass.
   CAN_filter_t allPassFilter;
   allPassFilter.ext=1;
@@ -300,31 +366,8 @@ void setup(void) {
       Serial.println("SdFs begin() failed");
       errorFlash();
   }
-  
   sd.chvol();
-  
- 
 }
-
-void open_binFile(){
-  current_file++;
-  char filename[200];
-  sprintf(filename,"CAN_%04d.bin",current_file);
-  if (!binFile.open(filename, O_RDWR | O_CREAT)) {
-    Serial.println("open failed");
-    errorFlash();
-  }
-  binFile.truncate(0);
-  file_open = true;
-}
-
-void close_binFile(){
-  binFile.close();
-  delay(100);
-  sd.ls(LS_DATE | LS_SIZE);
-  file_open = false;
-}
-
 
 
 void loop(void) {
@@ -337,40 +380,28 @@ void loop(void) {
   else if (debouncer.rose()) close_binFile();
   else if (!debouncer.read() ) send_mcp_messages();
 
-  //Check to see if there is anymore room in the buffer
-  if (current_position >= BUFFER_POSITION_LIMIT){ //20 messages
-    uint32_t start_micros = micros();
-    current_position = 4; //Let the first four bytes remain the same
-    if (BUFFER_SIZE != binFile.write(data_buffer[current_buffer], BUFFER_SIZE)) {
-      Serial.println("write failed");
-    }
-    else 
-    {
-   ;
-    }
-
-    //Record write times
-    uint32_t elapsed_micros = micros() - start_micros;
-    memcpy(&data_buffer[current_buffer][508], &elapsed_micros, 4);
-    
-    current_buffer += 1;
-    current_buffer = current_buffer % 2; // Switch back to zero if the value is 2
-    //Toggle LED to show SD card writing
-    yellow_LED_state = !yellow_LED_state;
-    digitalWrite(yellow_LED,yellow_LED_state);
-  }
-  
   if (Can0.read(rxmsg)){
+    RXCount0++;
     current_channel = 0;
     load_buffer();
-    //printFrame(rxmsg,0,RXCount0++);
+    
+    printFrame(rxmsg,0,RXCount0);
   }
   if (Can1.read(rxmsg)){
+    RXCount1++;
     current_channel = 1;
     load_buffer();
-    //printFrame(rxmsg,1,RXCount1++);
+    printFrame(rxmsg,1,RXCount1);
   }
-
+  if (Can2.readMsgBuf(&rxId, &ext_flag, &len, rxBuf) == CAN_OK){
+    RXCount2++;
+    memcpy(&rxmsg.buf, rxBuf, 8);
+    rxmsg.len = uint8_t(len);
+    rxmsg.id = uint32_t(rxId);
+    current_channel = 2;
+    load_buffer();
+    printFrame(rxmsg,2,RXCount2);
+  } 
   if (LEDblinkTimer >= 500){
     LEDblinkTimer = 0; 
     green_LED_state = !green_LED_state;
