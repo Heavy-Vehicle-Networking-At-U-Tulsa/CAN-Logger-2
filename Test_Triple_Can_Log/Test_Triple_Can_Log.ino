@@ -147,6 +147,7 @@ void load_buffer(){
   memcpy(&data_buffer[current_buffer][current_position], &rxmsg.buf, 8); 
   current_position += 8;
 
+  // Check the current position and see if the buffer needs to be written to memory
   check_buffer();
   
 }
@@ -198,7 +199,8 @@ void send_mcp_messages(){
     txmsg.buf[6] = (TXCount & 0x0000FF00) >>  8;
     txmsg.buf[7] = (TXCount & 0x000000FF);
     
-    //Send messaeg in format: ID, Standard (0) or Extended ID (1), message length, txmsg
+    
+    //Send message in FlexCAN format
     txmsg.id = 0x1CFEFE00;
     Can0.write(txmsg);
     TXCount++;
@@ -207,7 +209,8 @@ void send_mcp_messages(){
     Can1.write(txmsg);
     TXCount++;
     
-    Can2.sendMsgBuf(0x1CFEFE02, 1, 1, txmsg.buf);  
+    //Send message in format: ID, Standard (0) or Extended ID (1), message length, txmsg
+    Can2.sendMsgBuf(0x1CFEFE02, 1, 8, txmsg.buf);  
     TXCount++;
     
     //Toggle LED light as messages are sent
