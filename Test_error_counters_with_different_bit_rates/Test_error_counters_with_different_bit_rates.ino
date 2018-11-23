@@ -25,11 +25,11 @@ static CAN_message_t rxmsg;
 // Instantiate a Bounce object
 Bounce debouncer = Bounce(); 
 uint8_t rate_index = 0;
-uint8_t current_baud_rate = CAN_500KBPS;
+uint8_t current_baud_rate = CAN_250KBPS;
 #define num_rates 4
 uint8_t baudrate_list[num_rates] = {CAN_250KBPS, CAN_500KBPS, CAN_125KBPS, CAN_666KBPS};
 uint32_t TX_ID_list[num_rates] = {0x250, 0x500, 0x125, 0x666};
-uint32_t TX_ID = 0x500;
+uint32_t TX_ID = 0x250;
 
 // Set CS to pin 15, acording to schematics
 #define CS_CAN 15
@@ -118,6 +118,8 @@ void setup()
     Can0.setFilter(allPassFilter,filterNum); 
     Can1.setFilter(allPassFilter,filterNum); 
   }
+  Can0.report_errors = true;
+  Can1.report_errors = true;
   
   setup_CAN();
   
@@ -166,14 +168,14 @@ void loop()
     Serial.print("Message Sent: ");
     Serial.println(TXCount);
   }
-  if (Can0.read(rxmsg)) {
+  while (Can0.read(rxmsg)) {
     printFrame(rxmsg,0,RXCount0++);
     Serial.println(Can0.readREC());
     Serial.println(Can1.readREC());
     Serial.println(Can0.readTEC());
     Serial.println(Can1.readTEC());
   }
-  if (Can1.read(rxmsg)) {
+  while (Can1.read(rxmsg)) {
     printFrame(rxmsg,1,RXCount1++);
     Serial.println(Can0.readREC());
     Serial.println(Can1.readREC());

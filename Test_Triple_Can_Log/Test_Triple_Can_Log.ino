@@ -387,7 +387,6 @@ void loop(void) {
     RXCount0++;
     current_channel = 0;
     load_buffer();
-    
     printFrame(rxmsg,0,RXCount0);
   }
   if (Can1.read(rxmsg)){
