@@ -52,9 +52,8 @@
 #include <TimeLib.h>
 #include <EEPROM.h>
 
-// Instantiate a Bounce object to debounce the pushbutton
-//Bounce debouncer = Bounce(); 
-
+#define EEPROM_DEVICE_ID_ADDR 2
+#define EEPROM_FILE_ID_ADDR 8
 
 // Set up the SD Card object
 SdFs sd;
@@ -229,6 +228,15 @@ uint32_t processSyncMessage() {
   return pctime;
 }
 
+bool isFileNameValid( const char * fileName )
+{
+  char c;
+  while ( (c = *fileName++) )
+    if ( c != '.' && !isalnum(c) )
+      return false;
+  return true;
+}
+
 time_t getTeensy3Time(){
   microsecondsPerSecond = 0;
   return Teensy3Clock.get();
@@ -329,6 +337,7 @@ void close_binFile(){
       Serial.println("write failed");
   }
   binFile.close();
+  EEPROM.put(EEPROM_FILE_ID_ADDR,current_file);
   delay(100);
   sd.ls(LS_DATE | LS_SIZE);
   file_open = false;
@@ -535,7 +544,7 @@ void setup(void) {
   pinMode(CAN_SWITCH,OUTPUT);
   digitalWrite(CAN_SWITCH,LOW);
 
-  while(!Serial);
+  //while(!Serial);
   Serial.println("Starting CAN logger.");
   
   //Initialize the CAN channels with autobaud.
@@ -585,7 +594,17 @@ void setup(void) {
   Serial.print("SD Free Cluster Count: ");
   Serial.println(sd.freeClusterCount());
   
+  while (sd.freeClusterCount() < 10000){
+    Serial.println("There needs to be more free space on the SD card.");
+    sdErrorFlash();
+  }
+  
   sd.chvol();
+  
+  char default_name[] = "___";
+  EEPROM.get(EEPROM_DEVICE_ID_ADDR,logger_name);
+  if (!isFileNameValid(logger_name)) memcpy(&logger_name, &default_name, 4);
+  EEPROM.get(EEPROM_DEVICE_ID_ADDR,current_file);
 }
 
 
