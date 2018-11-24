@@ -7,3 +7,6 @@
 [submodule "WiFi101"]
 	path = libraries/WiFi101
 	url = git@github.com:arduino-libraries/WiFi101.git
+[submodule "libraries/OneButton"]
+	path = libraries/OneButton
+	url = https://github.com/mathertel/OneButton.git
