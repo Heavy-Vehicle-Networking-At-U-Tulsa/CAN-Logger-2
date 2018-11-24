@@ -1,9 +1,9 @@
 [submodule "FlexCAN_Library"]
-	path = FlexCAN_Library
+	path = libraries/FlexCAN_Library
 	url = git@github.com:Heavy-Vehicle-Networking-At-U-Tulsa/FlexCAN_Library.git
 [submodule "MCP_CAN_lib"]
-	path = MCP_CAN_lib
+	path = libraries/MCP_CAN_lib
 	url = git@github.com:Heavy-Vehicle-Networking-At-U-Tulsa/MCP_CAN_lib.git
 [submodule "WiFi101"]
-	path = WiFi101
+	path = libraries/WiFi101
 	url = git@github.com:arduino-libraries/WiFi101.git
