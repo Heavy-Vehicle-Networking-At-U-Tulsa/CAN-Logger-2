@@ -604,7 +604,7 @@ void setup(void) {
   char default_name[] = "___";
   EEPROM.get(EEPROM_DEVICE_ID_ADDR,logger_name);
   if (!isFileNameValid(logger_name)) memcpy(&logger_name, &default_name, 4);
-  EEPROM.get(EEPROM_DEVICE_ID_ADDR,current_file);
+  EEPROM.get(EEPROM_FILE_ID_ADDR,current_file);
 }
 
 
