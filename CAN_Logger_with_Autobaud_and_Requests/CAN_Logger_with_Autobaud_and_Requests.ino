@@ -51,9 +51,19 @@
 #include <OneButton.h>
 #include <TimeLib.h>
 #include <EEPROM.h>
+#include <error.h>
+#include <FastCRC.h>
 
+//Get access to a hardware based CRC32 
+FastCRC32 CRC32;
+
+// EEPROM memory addresses for creating file names
+// The Address 0 and 1 are used for baud rates
 #define EEPROM_DEVICE_ID_ADDR 2
 #define EEPROM_FILE_ID_ADDR 8
+
+// Setup a limit to turn off the CAN controller after this many messages.
+#define ERROR_COUNT_LIMIT 5000
 
 // Set up the SD Card object
 SdFs sd;
@@ -72,11 +82,11 @@ CAN_message_t rxmsg,txmsg;
 #define CAN_SWITCH 2
 #define BUTTON_PIN 21
 
+// Use the button for multiple inputs: click, doubleclick, and long click.
 OneButton button(BUTTON_PIN, true);
 
 /*  code to process time sync messages from the serial port   */
-#define TIME_HEADER  "T"   // Header tag for serial time sync message
-#define DEFAULT_TIME  1357041600 // Jan 1 2013 
+char timeString[32];
 
 // define a counter to reset after each second is counted.
 elapsedMicros microsecondsPerSecond;
@@ -133,8 +143,9 @@ uint8_t current_channel;
 
 // There are 2 data buffers that get switched. We need to know which one
 // we are using and where we are in the buffer.
-#define MAX_MESSAGES 20
-#define BUFFER_POSITION_LIMIT 499
+#define CAN_FRAME_SIZE 25
+#define MAX_MESSAGES 19
+#define BUFFER_POSITION_LIMIT (CAN_FRAME_SIZE * MAX_MESSAGES)
 #define BUFFER_SIZE 512
 uint8_t data_buffer[2][BUFFER_SIZE];
 uint8_t current_buffer;
@@ -165,6 +176,9 @@ uint32_t RXCount2 = 0;
 elapsedMillis lastCAN0messageTimer;
 elapsedMillis lastCAN1messageTimer;
 elapsedMillis lastCAN2messageTimer;
+uint32_t ErrorCount0 = 0;
+uint32_t ErrorCount1 = 0;
+uint32_t ErrorCount2 = 0;
 
 
 
@@ -206,6 +220,11 @@ void load_buffer(){
   memcpy(&data_buffer[current_buffer][current_position], &rxmsg.buf, 8); 
   current_position += 8;
 
+  if ((rxmsg.id & CAN_ERR_FLAG) == CAN_ERR_FLAG){
+    RED_LED_state = !RED_LED_state;
+    digitalWrite(RED_LED, RED_LED_state);  
+  }
+  
   //Create a file if it is not open yet
   if (!file_open) open_binFile();
   
@@ -213,21 +232,11 @@ void load_buffer(){
   check_buffer();
 }
 
-/*
- * Time functions
- */
-uint32_t processSyncMessage() {
-  uint32_t pctime = 0L;
-  
-  if(Serial.find(TIME_HEADER)) {
-     pctime = Serial.parseInt();
-     if( pctime < DEFAULT_TIME) { // check the value is a valid time (greater than Jan 1 2013)
-       pctime = 0L; // return 0 to indicate that the time is not valid
-     }
-  }
-  return pctime;
-}
 
+/*
+ * Check to make sure the characters are valid in a character array
+ * This is used to check the data coming from EEPROM.
+ */
 bool isFileNameValid( const char * fileName )
 {
   char c;
@@ -237,11 +246,19 @@ bool isFileNameValid( const char * fileName )
   return true;
 }
 
+/*
+ * Reset the microsecond counter and return the realtime clock
+ * This function requires the sync interval to be exactly 1 second.
+ */
 time_t getTeensy3Time(){
   microsecondsPerSecond = 0;
   return Teensy3Clock.get();
 }
 
+/*
+ * Routine to enable date and time for the sdcard 
+ * file system
+ */
 void dateTime(uint16_t* FSdate, uint16_t* FStime) {
   // Return date using FS_DATE macro to format fields.
   *FSdate = FS_DATE(year(), month(), day());
@@ -256,7 +273,6 @@ void dateTime(uint16_t* FSdate, uint16_t* FStime) {
  * This third CAN channel is wired to the J1708 pins (F and G) found
  * on some newer PACCAR trucks.
  */
-
 void send_Can2_messages(CAN_message_t &txmsg){
   if (TXTimer2 >= TX_MESSAGE_TIME){
     //Send message in format: ID, Standard (0) or Extended ID (1), message length, txmsg
@@ -326,6 +342,12 @@ void open_binFile(){
     Serial.println("Binary Log File Creation Failed.");
     sdErrorFlash();
   }
+  // Write the filename to each line in the 512 byte block
+  memcpy(&data_buffer[0][497], &filename, 8);
+  memcpy(&data_buffer[1][497], &filename, 8);
+  
+  //Move the current position to 4 since the first 4 bytes are taken.
+  current_position = 4;
   binFile.truncate(0);
   file_open = true;
   RXTimer = 0;
@@ -341,32 +363,46 @@ void close_binFile(){
   delay(100);
   sd.ls(LS_DATE | LS_SIZE);
   file_open = false;
+  //Initialize the CAN channels with autobaud.
+  
   RXCount0 = 0;
   RXCount1 = 0;
   RXCount2 = 0;
+  Can0.begin(0);
+  Can1.begin(0);
 }
 
 void check_buffer(){
   //Check to see if there is anymore room in the buffer
-  if (current_position >= BUFFER_POSITION_LIMIT){ //20 messages
+  if (current_position >= BUFFER_POSITION_LIMIT){ //max number of messages
     uint32_t start_micros = micros();
-    memcpy(&data_buffer[current_buffer][500], &RXCount0, 4);
-    memcpy(&data_buffer[current_buffer][504], &RXCount1, 4);
+    memcpy(&data_buffer[current_buffer][479], &RXCount0, 4);
+    memcpy(&data_buffer[current_buffer][483], &RXCount1, 4);
+    memcpy(&data_buffer[current_buffer][487], &RXCount2, 4);
     
-    current_position = 4; //Let the first four bytes remain the same
+    data_buffer[current_buffer][491] = Can0.readREC();
+    data_buffer[current_buffer][492] = Can1.readREC();
+    data_buffer[current_buffer][493] = Can2.errorCountRX();
+    
+    data_buffer[current_buffer][494] = Can0.readTEC();
+    data_buffer[current_buffer][495] = Can1.readTEC();
+    data_buffer[current_buffer][496] = Can2.errorCountTX();
+    
+    uint32_t checksum = CRC32.crc32(data_buffer[current_buffer], BUFFER_SIZE);
+    memcpy(&data_buffer[current_buffer][508], &checksum, 4);
+    
     if (BUFFER_SIZE != binFile.write(data_buffer[current_buffer], BUFFER_SIZE)) {
       Serial.println("write failed");
-      sdErrorFlash();
-      
+      sdErrorFlash(); 
     }
-
-    //Record write times
-    uint32_t elapsed_micros = micros() - start_micros;
-    memcpy(&data_buffer[current_buffer][508], &elapsed_micros, 4);
-    
+    current_position = 4; //Let the first four bytes remain the same
     current_buffer += 1;
     current_buffer = current_buffer % 2; // Switch back to zero if the value is 2
-
+    
+    //Record write times for the previous frame, since the existing frame was just written
+    uint32_t elapsed_micros = micros() - start_micros;
+    memcpy(&data_buffer[current_buffer][505], &elapsed_micros, 3);
+    
     // Set all values in the array to FF so old messages don't show up at the end.
     memset(&data_buffer[current_buffer], 0xFF, BUFFER_SIZE);
     
@@ -510,8 +546,8 @@ void setup(void) {
   pinMode(SILENT_0,OUTPUT);
   pinMode(SILENT_1,OUTPUT);
   pinMode(SILENT_2,OUTPUT);
-  //Prevent transmission for the CAN TXRX
-  digitalWrite(SILENT_0,LOW); //Change these values to get different errors
+  //Set High to prevent transmission for the CAN TXRX
+  digitalWrite(SILENT_0,LOW); 
   digitalWrite(SILENT_1,LOW);
   digitalWrite(SILENT_2,LOW);
   
@@ -552,12 +588,15 @@ void setup(void) {
   Can1.begin(0);
 
   // log what we transmit
-  Can0.setSelfReception(true);
-  Can1.setSelfReception(true);
+  Can0.setSelfReception(false);
+  Can1.setSelfReception(false);
+
+  Can0.setListenOnly(false);
+  Can1.setListenOnly(false);
   
-  Can0.report_errors = true;
-  Can1.report_errors = true;
-  
+  Can0.setReportErrors(true);
+  Can1.setReportErrors(true);
+    
   //Flex CAN defaults
   txmsg.ext = 1;
   txmsg.len = 8;
@@ -565,8 +604,9 @@ void setup(void) {
   // Setup MCP CAN
   if(Can2.begin(MCP_ANY, CAN_250KBPS, MCP_16MHZ) == CAN_OK) Serial.println("MCP2515 Initialized Successfully!");
   else Serial.println("Error Initializing MCP2515...");
-  Can2.setMode(MCP_NORMAL);
-  
+  Can2.setMode(MCP_LISTENONLY);
+
+  // Setup timing services
   setSyncProvider(getTeensy3Time);
   if (timeStatus()!= timeSet) {
     Serial.println("Unable to sync with the RTC");
@@ -574,7 +614,6 @@ void setup(void) {
     Serial.println("RTC has set the system time");
   }
   setSyncInterval(1);
-  char timeString[32];
   sprintf(timeString,"%04d-%02d-%02d %02d:%02d:%02d.%06d",year(),month(),day(),hour(),minute(),second(),uint32_t(microsecondsPerSecond));
   Serial.println(timeString);
   
@@ -615,12 +654,30 @@ void loop(void) {
     current_channel = 0;
     load_buffer();
     printFrame(rxmsg,0,RXCount0);
+    if ((rxmsg.id & CAN_ERR_FLAG) == CAN_ERR_FLAG){
+      ErrorCount0++;
+      Serial.print("Error Count 0: ");
+      Serial.println(ErrorCount0); 
+//      if (ErrorCount0 > ERROR_COUNT_LIMIT){
+//        ErrorCount0 = 0;
+//        Can0.end();
+//      }
+    }
   }
   if (Can1.read(rxmsg)){
     RXCount1++;
     current_channel = 1;
     load_buffer();
     printFrame(rxmsg,1,RXCount1);
+    if ((rxmsg.id & CAN_ERR_FLAG) == CAN_ERR_FLAG){
+      ErrorCount1++;
+      Serial.print("Error Count 1: ");
+      Serial.println(ErrorCount1); 
+//      if (ErrorCount1 > ERROR_COUNT_LIMIT){
+//        ErrorCount1 = 0;
+//        Can1.end();
+//      }
+    }
   }
   if (Can2.readMsgBuf(&rxId, &ext_flag, &len, rxBuf) == CAN_OK){
     RXCount2++;
@@ -645,7 +702,8 @@ void loop(void) {
   if (send_additional_requests){
     
   }
-  
+
+  // Blink the LEDs if needed
   led_blink_routines();
   
   // keep watching the push button:
