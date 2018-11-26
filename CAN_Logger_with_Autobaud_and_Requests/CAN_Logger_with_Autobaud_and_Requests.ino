@@ -156,7 +156,7 @@ uint8_t data_buffer[BUFFER_SIZE];
 uint16_t current_position;
 
 //Counter and timer to keep track of transmitted messages
-#define TX_MESSAGE_TIME 5 //milliseconds
+#define TX_MESSAGE_TIME 2 //milliseconds
 uint32_t TXCount0 = 0;
 uint32_t TXCount1 = 0;
 uint32_t TXCount2 = 0;
@@ -165,11 +165,45 @@ elapsedMillis TXTimer1;
 elapsedMillis TXTimer2;
 
 // To use a button to send requests, we need to track it.
-#define SEND_REQUEST_TIME
+#define NUM_REQUEST_PASSES 3
+#define REQUEST_TIMING 200 //milliseconds
 elapsedMillis send_request_timer;
 boolean send_requests;
 boolean send_additional_requests;
 uint16_t request_index;
+uint8_t send_passes;
+
+#define NUM_REQUESTS 27
+uint16_t request_pgn[NUM_REQUESTS] = {
+  65261, // Cruise Control/Vehicle Speed Setup
+  65214, // Electronic Engine Controller 4
+  65259, // Component Identification
+  65242, // Software Identification
+  65244, // Idle Operation
+  65260, // Vehicle Identification
+  65255, // Vehicle Hours
+  65253, // Engine Hours, Revolutions
+  65257, // Fuel Consumption (Liquid)
+  65256, // Vehicle Direction/Speed
+  65254, // Time/Date
+  65211, // Trip Fan Information
+  65210, // Trip Distance Information
+  65209, // Trip Fuel Information (Liquid)
+  65207, // Engine Speed/Load Factor Information
+  65206, // Trip Vehicle Speed/Cruise Distance Information
+  65205, // Trip Shutdown Information
+  65204, // Trip Time Information 1
+  65200, // Trip Time Information 2
+  65250, // Transmission Configuration
+  65203, // Fuel Information (Liquid)
+  65201, // ECU History
+  65168, // Engine Torque History
+  64981, // Electronic Engine Controller 5
+  64978, // ECU Performance
+  64965, // ECU Identification Information
+  65165  // Vehicle Electrical Power #2
+};
+
     
 //Create a counter and timer to keep track of received message traffic
 #define RX_TIME_OUT 1000 //milliseconds
@@ -359,15 +393,12 @@ void dateTime(uint16_t* FSdate, uint16_t* FStime) {
  * This third CAN channel is wired to the J1708 pins (F and G) found
  * on some newer PACCAR trucks.
  */
-void send_Can2_messages(CAN_message_t &txmsg){
+void send_Can2_message(CAN_message_t &txmsg){
   if (TXTimer2 >= TX_MESSAGE_TIME){
     //Send message in format: ID, Standard (0) or Extended ID (1), message length, txmsg
     Can2.sendMsgBuf(txmsg.id, 1, txmsg.len, txmsg.buf);  
     TXCount2++;
     TXTimer2 = 0;
-    //Toggle LED light as messages are sent
-    RED_LED_state = !RED_LED_state;                       
-    digitalWrite(RED_LED,RED_LED_state);  
   }  
 }
 
@@ -377,9 +408,6 @@ void send_Can0_message(CAN_message_t &txmsg){
     Can0.write(txmsg);
     TXCount0++;
     TXTimer0 = 0;
-    //Toggle LED light as messages are sent
-    RED_LED_state = !RED_LED_state;                       
-    digitalWrite(RED_LED,RED_LED_state);  
   }
 }    
 
@@ -389,9 +417,6 @@ void send_Can1_message(CAN_message_t &txmsg){
     Can1.write(txmsg);
     TXCount1++;
     TXTimer1 = 0;
-    //Toggle LED light as messages are sent
-    RED_LED_state = !RED_LED_state;                       
-    digitalWrite(RED_LED,RED_LED_state);  
   }
 }
 
@@ -560,7 +585,7 @@ void led_blink_routines(){
   else
   {
     //Turn off the red LED after some time after transmitting.
-    if (TXTimer0 >= 200 && TXTimer1 >= 200 && TXTimer2 >= 200)
+    if (TXTimer0 >= 300 && TXTimer1 >= 300 && TXTimer2 >= 300)
     {
       RED_LED_state = LOW;
       digitalWrite(RED_LED,RED_LED_state);  
@@ -762,7 +787,42 @@ void loop(void) {
   
   // Send requests for additional data if needed
   if (send_requests){
-      
+    if (send_passes < NUM_REQUEST_PASSES){
+      if (send_request_timer > REQUEST_TIMING){
+        send_request_timer = 0;
+        txmsg.len = 3;
+        txmsg.id = 0x18EA00F9;
+        txmsg.buf[0] = (request_pgn[request_index] & 0x0000FF);
+        txmsg.buf[1] = (request_pgn[request_index] & 0x00FF00) >> 8 ;
+        txmsg.buf[2] = (request_pgn[request_index] & 0xFF0000) >> 16; //These are in reverse byte order.
+        Serial.print("Requesting PGN ");
+        Serial.println(request_pgn[request_index]);
+        send_Can0_message(txmsg);
+        send_Can1_message(txmsg);
+        send_Can2_message(txmsg);
+        //Toggle LED light as messages are sent
+        RED_LED_state = !RED_LED_state;                       
+        digitalWrite(RED_LED,RED_LED_state);  
+        request_index++;
+        if (request_index >= NUM_REQUESTS) {
+          request_index = 0;
+          send_passes++;
+          //shuffle
+          Serial.println("Shuffling Requests");
+          for (int i = 0; i < NUM_REQUESTS; i++) {
+            int j = random(i, NUM_REQUESTS);
+            auto temp = request_pgn[i];
+            request_pgn[i] = request_pgn[j];
+            request_pgn[j] = temp;
+          }
+        }
+      }
+    }
+    else
+    {
+      send_passes = 0;
+      send_requests = false;
+    }
   }
   if (send_additional_requests){
     
