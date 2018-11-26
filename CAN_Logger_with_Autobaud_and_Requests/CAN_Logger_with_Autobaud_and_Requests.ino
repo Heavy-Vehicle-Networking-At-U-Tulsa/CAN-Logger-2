@@ -59,7 +59,7 @@ FastCRC32 CRC32;
 
 // EEPROM memory addresses for creating file names
 // The Address 0 and 1 are used for baud rates
-#define EEPROM_DEVICE_ID_ADDR 2
+#define EEPROM_DEVICE_ID_ADDR 4
 #define EEPROM_FILE_ID_ADDR 8
 
 // Setup a limit to turn off the CAN controller after this many messages.
@@ -92,7 +92,7 @@ char timeString[32];
 elapsedMicros microsecondsPerSecond;
 
 // Get a uniqueName for the Logger File
-char logger_name[4] = "2AA";
+char logger_name[4];
 bool file_open;
 
 // Setup the MCP2515 controller
@@ -135,7 +135,7 @@ boolean YELLOW_LED_fast_blink_state;
 
 
 // Setup a counter to keep track of the filename
-uint16_t current_file;
+char current_file[4];
 
 // Keep track of the CAN Channel (0, 1, or 2, where 2 is MCP CAN)
 uint8_t current_channel;
@@ -237,7 +237,7 @@ void load_buffer(){
  * Check to make sure the characters are valid in a character array
  * This is used to check the data coming from EEPROM.
  */
-bool isFileNameValid( const char * fileName )
+bool isFileNameValid( const char *fileName )
 {
   char c;
   while ( (c = *fileName++) )
@@ -334,10 +334,30 @@ void sdErrorFlash(){
   }
 }
 
+void get_current_file(){
+  Serial.println(current_file);
+  current_file[2]++;
+  if (current_file[2] == ':') current_file[2] = 'A';
+  else if (current_file[2] == '[') {
+    current_file[2] = '0';
+    current_file[1]++;
+  }
+  if (current_file[1] == ':') current_file[1] = 'A';
+  else if (current_file[1] == '[') {
+    current_file[1] = '0';
+    current_file[0]++;
+  }
+  if (current_file[0] == ':') current_file[0] = 'A';
+  else if (current_file[0] == '[') {
+    current_file[0] = '0';
+  }
+  Serial.println(current_file);
+}
+
 void open_binFile(){
-  current_file++;
+  get_current_file();
   char filename[13];
-  sprintf(filename,"TU%03s%03d.bin",logger_name,current_file);
+  sprintf(filename,"TU%s%s.bin",logger_name,current_file);
   while (!binFile.open(filename, O_RDWR | O_CREAT)) {
     Serial.println("Binary Log File Creation Failed.");
     sdErrorFlash();
@@ -364,7 +384,6 @@ void close_binFile(){
   sd.ls(LS_DATE | LS_SIZE);
   file_open = false;
   //Initialize the CAN channels with autobaud.
-  
   RXCount0 = 0;
   RXCount1 = 0;
   RXCount2 = 0;
@@ -582,20 +601,18 @@ void setup(void) {
 
   //while(!Serial);
   Serial.println("Starting CAN logger.");
+
+  Can0.setReportErrors(true);
+  Can1.setReportErrors(true);
   
   //Initialize the CAN channels with autobaud.
   Can0.begin(0);
   Can1.begin(0);
 
-  // log what we transmit
-  Can0.setSelfReception(false);
-  Can1.setSelfReception(false);
+  Can0.setListenOnly(true);
+  Can1.setListenOnly(true);
+//  
 
-  Can0.setListenOnly(false);
-  Can1.setListenOnly(false);
-  
-  Can0.setReportErrors(true);
-  Can1.setReportErrors(true);
     
   //Flex CAN defaults
   txmsg.ext = 1;
@@ -640,10 +657,20 @@ void setup(void) {
   
   sd.chvol();
   
-  char default_name[] = "___";
   EEPROM.get(EEPROM_DEVICE_ID_ADDR,logger_name);
-  if (!isFileNameValid(logger_name)) memcpy(&logger_name, &default_name, 4);
+  if (!isFileNameValid(logger_name)) strcpy(logger_name, "2__");
+  
+  // Uncomment the following 2 lines to reset name
+  //strcpy(logger_name, "2__");
+  //EEPROM.put(EEPROM_DEVICE_ID_ADDR,logger_name);
+  
   EEPROM.get(EEPROM_FILE_ID_ADDR,current_file);
+  if (!isFileNameValid(current_file)) strcpy(current_file, "Y00");
+  
+  // Uncomment thefollowing 2 lines to reset the counter
+  //strcpy(current_file, "000");
+  //EEPROM.put(EEPROM_DEVICE_ID_ADDR,logger_name);
+  
 }
 
 
