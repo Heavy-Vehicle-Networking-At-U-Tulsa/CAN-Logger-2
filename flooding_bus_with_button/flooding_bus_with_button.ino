@@ -7,7 +7,7 @@ static CAN_message_t txmsg;
 
 //Define default baudrate
 #define BAUDRATE250K 250000
-#define BAUDRATE500K 500000
+
 
 //Define LED
 #define red_led 14
@@ -51,6 +51,7 @@ txmsg.buf[7] = 0;
  digitalWrite(SILENT_2,LOW);
  
  //Start serial with red LED on for power indicator
+
 Serial.begin(9600);
  delay(2);
  pinMode (red_led, OUTPUT);
