@@ -72,7 +72,7 @@ SdFs sd;
 FsFile binFile;
 
 // All CAN messages are received in the FlexCAN structure
-CAN_message_t rxmsg,txmsg;
+CAN_message_t static rxmsg,txmsg;
 
 // Define CAN TXRX Transmission Silent pins
 // See the CAN Logger 2 Schematic for the source pins
@@ -85,6 +85,9 @@ CAN_message_t rxmsg,txmsg;
 // Use the button for multiple inputs: click, doubleclick, and long click.
 OneButton button(BUTTON_PIN, true);
 
+String commandString;
+
+
 /*  code to process time sync messages from the serial port   */
 char timeString[32];
 
@@ -94,7 +97,9 @@ elapsedMicros microsecondsPerSecond;
 // Get a uniqueName for the Logger File
 char logger_name[4];
 bool file_open;
-
+char current_file_name[13];
+char prefix[5];
+  
 // Setup the MCP2515 controller
 // Set CS to pin 15, according to schematics
 #define CS_CAN 15
@@ -147,8 +152,7 @@ uint8_t current_channel;
 #define MAX_MESSAGES 19
 #define BUFFER_POSITION_LIMIT (CAN_FRAME_SIZE * MAX_MESSAGES)
 #define BUFFER_SIZE 512
-uint8_t data_buffer[2][BUFFER_SIZE];
-uint8_t current_buffer;
+uint8_t data_buffer[BUFFER_SIZE];
 uint16_t current_position;
 
 //Counter and timer to keep track of transmitted messages
@@ -200,24 +204,24 @@ void load_buffer(){
   GREEN_LED_state = !GREEN_LED_state;
   digitalWrite(GREEN_LED, GREEN_LED_state);
     
-  data_buffer[current_buffer][current_position] = current_channel;
+  data_buffer[current_position] = current_channel;
   current_position += 1;
   
   time_t timeStamp = now();
-  memcpy(&data_buffer[current_buffer][current_position], &timeStamp, 4);
+  memcpy(&data_buffer[current_position], &timeStamp, 4);
   current_position += 4;
   
-  memcpy(&data_buffer[current_buffer][current_position], &rxmsg.micros, 4);
+  memcpy(&data_buffer[current_position], &rxmsg.micros, 4);
   current_position += 4;
 
-  memcpy(&data_buffer[current_buffer][current_position], &rxmsg.id, 4);
+  memcpy(&data_buffer[current_position], &rxmsg.id, 4);
   current_position += 4;
   
   uint32_t DLC = (rxmsg.len << 24) | (0x00FFFFFF & uint32_t(microsecondsPerSecond));
-  memcpy(&data_buffer[current_buffer][current_position], &DLC, 4);
+  memcpy(&data_buffer[current_position], &DLC, 4);
   current_position += 4;
 
-  memcpy(&data_buffer[current_buffer][current_position], &rxmsg.buf, 8); 
+  memcpy(&data_buffer[current_position], &rxmsg.buf, 8); 
   current_position += 8;
 
   if ((rxmsg.id & CAN_ERR_FLAG) == CAN_ERR_FLAG){
@@ -232,6 +236,88 @@ void load_buffer(){
   check_buffer();
 }
 
+void check_buffer(){
+  //Check to see if there is anymore room in the buffer
+  if (current_position >= BUFFER_POSITION_LIMIT){ //max number of messages
+    uint32_t start_micros = micros();
+    
+    // Write the beginning of each line in the 512 byte block
+    sprintf(prefix,"CAN2");
+    memcpy(&data_buffer[0], &prefix, 4);
+    current_position = 4;
+    
+    memcpy(&data_buffer[479], &RXCount0, 4);
+    memcpy(&data_buffer[483], &RXCount1, 4);
+    memcpy(&data_buffer[487], &RXCount2, 4);
+    
+    data_buffer[491] = Can0.readREC();
+    data_buffer[492] = Can1.readREC();
+    data_buffer[493] = uint8_t(Can2.errorCountRX());
+    
+    data_buffer[494] = Can0.readTEC();
+    data_buffer[495] = Can1.readTEC();
+    data_buffer[496] = uint8_t(Can2.errorCountTX());
+    
+    // Write the filename to each line in the 512 byte block
+    memcpy(&data_buffer[497], &current_file_name, 8);
+  
+    uint32_t checksum = CRC32.crc32(data_buffer, 508);
+    memcpy(&data_buffer[508], &checksum, 4);
+    
+    if (BUFFER_SIZE != binFile.write(data_buffer, BUFFER_SIZE)) {
+      Serial.println("write failed");
+      sdErrorFlash(); 
+    }
+    
+    
+    
+    //Record write times for the previous frame, since the existing frame was just written
+    uint32_t elapsed_micros = micros() - start_micros;
+    memcpy(&data_buffer[505], &elapsed_micros, 3);
+    
+  
+    //Toggle LED to show SD card writing
+    YELLOW_LED_state = !YELLOW_LED_state;
+    digitalWrite(YELLOW_LED,YELLOW_LED_state);
+  }
+}
+
+void print_binary(){
+  char line[512];
+  if (!binFile.isOpen()) close_binFile();
+  binFile.open(current_file_name, O_READ);
+  while (binFile.read(line, sizeof(line)) > 0) {
+    for (uint16_t i = 0; i < sizeof(line); i++){
+      char disp[4];
+      sprintf(disp,"%02X ",line[i]);
+      Serial.print(disp);
+    }  
+    Serial.println();
+  }
+}
+
+void delete_last_file(){
+  if (!binFile.isOpen()) close_binFile();
+  
+  // Remove any existing file.
+  if (sd.exists(current_file_name)) {
+    sd.remove(current_file_name); 
+  }
+  sd.ls(LS_DATE | LS_SIZE);
+}
+
+void stream_binary(){
+  char line[512];
+  if (!binFile.isOpen()) close_binFile();
+  binFile.open(current_file_name, O_READ);
+  while (binFile.read(line, sizeof(line)) > 0) 
+  {
+    for (uint16_t i = 0; i < sizeof(line); i++)
+    {
+      Serial.write(line[i]);
+    }  
+  }
+}
 
 /*
  * Check to make sure the characters are valid in a character array
@@ -335,7 +421,6 @@ void sdErrorFlash(){
 }
 
 void get_current_file(){
-  Serial.println(current_file);
   current_file[2]++;
   if (current_file[2] == ':') current_file[2] = 'A';
   else if (current_file[2] == '[') {
@@ -351,20 +436,15 @@ void get_current_file(){
   else if (current_file[0] == '[') {
     current_file[0] = '0';
   }
-  Serial.println(current_file);
 }
 
 void open_binFile(){
   get_current_file();
-  char filename[13];
-  sprintf(filename,"TU%s%s.bin",logger_name,current_file);
-  while (!binFile.open(filename, O_RDWR | O_CREAT)) {
+  sprintf(current_file_name,"TU%s%s.bin",logger_name,current_file);
+  while (!binFile.open(current_file_name, O_RDWR | O_CREAT)) {
     Serial.println("Binary Log File Creation Failed.");
     sdErrorFlash();
   }
-  // Write the filename to each line in the 512 byte block
-  memcpy(&data_buffer[0][497], &filename, 8);
-  memcpy(&data_buffer[1][497], &filename, 8);
   
   //Move the current position to 4 since the first 4 bytes are taken.
   current_position = 4;
@@ -375,7 +455,7 @@ void open_binFile(){
 
 void close_binFile(){
   //Write the last set of data
-  if (BUFFER_SIZE != binFile.write(data_buffer[current_buffer], BUFFER_SIZE)) {
+  if (BUFFER_SIZE != binFile.write(data_buffer, BUFFER_SIZE)) {
       Serial.println("write failed");
   }
   binFile.close();
@@ -391,45 +471,6 @@ void close_binFile(){
   Can1.begin(0);
 }
 
-void check_buffer(){
-  //Check to see if there is anymore room in the buffer
-  if (current_position >= BUFFER_POSITION_LIMIT){ //max number of messages
-    uint32_t start_micros = micros();
-    memcpy(&data_buffer[current_buffer][479], &RXCount0, 4);
-    memcpy(&data_buffer[current_buffer][483], &RXCount1, 4);
-    memcpy(&data_buffer[current_buffer][487], &RXCount2, 4);
-    
-    data_buffer[current_buffer][491] = Can0.readREC();
-    data_buffer[current_buffer][492] = Can1.readREC();
-    data_buffer[current_buffer][493] = Can2.errorCountRX();
-    
-    data_buffer[current_buffer][494] = Can0.readTEC();
-    data_buffer[current_buffer][495] = Can1.readTEC();
-    data_buffer[current_buffer][496] = Can2.errorCountTX();
-    
-    uint32_t checksum = CRC32.crc32(data_buffer[current_buffer], BUFFER_SIZE);
-    memcpy(&data_buffer[current_buffer][508], &checksum, 4);
-    
-    if (BUFFER_SIZE != binFile.write(data_buffer[current_buffer], BUFFER_SIZE)) {
-      Serial.println("write failed");
-      sdErrorFlash(); 
-    }
-    current_position = 4; //Let the first four bytes remain the same
-    current_buffer += 1;
-    current_buffer = current_buffer % 2; // Switch back to zero if the value is 2
-    
-    //Record write times for the previous frame, since the existing frame was just written
-    uint32_t elapsed_micros = micros() - start_micros;
-    memcpy(&data_buffer[current_buffer][505], &elapsed_micros, 3);
-    
-    // Set all values in the array to FF so old messages don't show up at the end.
-    memset(&data_buffer[current_buffer], 0xFF, BUFFER_SIZE);
-    
-    //Toggle LED to show SD card writing
-    YELLOW_LED_state = !YELLOW_LED_state;
-    digitalWrite(YELLOW_LED,YELLOW_LED_state);
-  }
-}
 
 void led_blink_routines(){
   if (GREEN_LED_fast_blink_state)
@@ -555,12 +596,9 @@ void myLongPressFunction(){
 
 
 void setup(void) {
-  // Write the begining of each line in the 512 byte block
-  char prefix[5];
-  sprintf(prefix,"CAN2");
-  memcpy(&data_buffer[0][0], &prefix, 4);
-  memcpy(&data_buffer[1][0], &prefix, 4);
-  current_position = 4;
+  
+  commandString.reserve(256);
+ 
   
   pinMode(SILENT_0,OUTPUT);
   pinMode(SILENT_1,OUTPUT);
@@ -680,7 +718,7 @@ void loop(void) {
     RXCount0++;
     current_channel = 0;
     load_buffer();
-    printFrame(rxmsg,0,RXCount0);
+    //printFrame(rxmsg,0,RXCount0);
     if ((rxmsg.id & CAN_ERR_FLAG) == CAN_ERR_FLAG){
       ErrorCount0++;
       Serial.print("Error Count 0: ");
@@ -695,7 +733,7 @@ void loop(void) {
     RXCount1++;
     current_channel = 1;
     load_buffer();
-    printFrame(rxmsg,1,RXCount1);
+    //printFrame(rxmsg,1,RXCount1);
     if ((rxmsg.id & CAN_ERR_FLAG) == CAN_ERR_FLAG){
       ErrorCount1++;
       Serial.print("Error Count 1: ");
@@ -732,6 +770,17 @@ void loop(void) {
 
   // Blink the LEDs if needed
   led_blink_routines();
+
+  if (Serial.available() >= 2 && Serial.available() < 256) {
+    commandString = Serial.readStringUntil('\n');
+    if (commandString.equalsIgnoreCase("HEX"))        print_binary();
+    else if (commandString.equalsIgnoreCase("BIN"))   stream_binary();
+    else if (commandString.equalsIgnoreCase("DEL"))   delete_last_file();
+    else {
+      Serial.println(("Unknown Command"));
+      Serial.clear();
+    }
+  }
   
   // keep watching the push button:
   button.tick();
