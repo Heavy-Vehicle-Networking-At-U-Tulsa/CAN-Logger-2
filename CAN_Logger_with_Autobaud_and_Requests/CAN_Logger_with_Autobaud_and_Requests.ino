@@ -72,7 +72,7 @@ SdFs sd;
 FsFile binFile;
 
 // All CAN messages are received in the FlexCAN structure
-CAN_message_t static rxmsg,txmsg;
+CAN_message_t rxmsg,txmsg;
 
 // Define CAN TXRX Transmission Silent pins
 // See the CAN Logger 2 Schematic for the source pins
@@ -603,9 +603,6 @@ void myDoubleClickFunction(){
   }
 
 void myLongPressStopFunction(){
-  send_request_timer = 0;
-  send_requests = true;
-  send_additional_requests = true;
   RED_LED_state = LOW;
   digitalWrite(RED_LED,RED_LED_state);
 }
@@ -674,8 +671,6 @@ void setup(void) {
 
   Can0.setListenOnly(true);
   Can1.setListenOnly(true);
-//  
-
     
   //Flex CAN defaults
   txmsg.ext = 1;
@@ -743,7 +738,7 @@ void loop(void) {
     RXCount0++;
     current_channel = 0;
     load_buffer();
-    //printFrame(rxmsg,0,RXCount0);
+    printFrame(rxmsg,0,RXCount0);
     if ((rxmsg.id & CAN_ERR_FLAG) == CAN_ERR_FLAG){
       ErrorCount0++;
       Serial.print("Error Count 0: ");
@@ -758,7 +753,7 @@ void loop(void) {
     RXCount1++;
     current_channel = 1;
     load_buffer();
-    //printFrame(rxmsg,1,RXCount1);
+    printFrame(rxmsg,1,RXCount1);
     if ((rxmsg.id & CAN_ERR_FLAG) == CAN_ERR_FLAG){
       ErrorCount1++;
       Serial.print("Error Count 1: ");
