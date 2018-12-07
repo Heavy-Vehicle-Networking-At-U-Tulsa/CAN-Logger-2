@@ -85,7 +85,8 @@ CAN_message_t rxmsg,txmsg;
 #define SILENT_1   38
 #define SILENT_2   37
 #define CAN_SWITCH 2
-#define BUTTON_PIN 21
+#define BUTTON_PIN 20
+#define POWER_PIN 21
 
 // Use the button for multiple inputs: click, doubleclick, and long click.
 OneButton button(BUTTON_PIN, true);
@@ -693,6 +694,8 @@ void myLongPressFunction(){
 void setup(void) {
   
   commandString.reserve(256);
+
+  
   
   pinMode(SILENT_0,OUTPUT);
   pinMode(SILENT_1,OUTPUT);
@@ -822,6 +825,9 @@ void setup(void) {
   sprintf(file_name_prefix,"%s%s",brand_name,logger_name);
   
   recording = true;
+
+  pinMode(POWER_PIN,INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(POWER_PIN), close_binFile, RISING);
 }
 
 
@@ -902,6 +908,8 @@ void loop(void) {
   // Blink the LEDs if needed
   led_blink_routines();
 
+  //digitalWrite(RED_LED,digitalRead(POWER_PIN));
+  
   if (Serial.available() >= 2) {
     commandString = Serial.readStringUntil('\n');
     if (commandString.equalsIgnoreCase("HEX"))          print_hex();
@@ -941,6 +949,8 @@ void loop(void) {
   // keep watching the push button:
   button.tick();
 }
+
+
 
 void turn_recording_on(){
   recording = true;
