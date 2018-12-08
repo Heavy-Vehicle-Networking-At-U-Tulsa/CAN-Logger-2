@@ -69,6 +69,8 @@ FastCRC32 CRC32;
 // Set up the SD Card object
 SdFs sd;
 
+#define SD_CONFIG SdioConfig(FIFO_SDIO)
+
 // Create a file object
 FsFile binFile;
 FsFile baudFile;
@@ -86,13 +88,12 @@ CAN_message_t rxmsg,txmsg;
 #define SILENT_2   37
 #define CAN_SWITCH 2
 #define BUTTON_PIN 20
-#define POWER_PIN 21
+#define POWER_PIN  21
 
 // Use the button for multiple inputs: click, doubleclick, and long click.
 OneButton button(BUTTON_PIN, true);
 
 String commandString;
-
 
 /*  code to process time sync messages from the serial port   */
 char timeString[100];
@@ -177,10 +178,13 @@ elapsedMillis TXTimer2;
 #define NUM_REQUEST_PASSES 3
 #define REQUEST_TIMING 200 //milliseconds
 elapsedMillis send_request_timer;
+elapsedMillis send_iso_request_timer;
 boolean send_requests;
-boolean send_additional_requests;
+boolean send_iso_requests;
 uint16_t request_index;
+uint16_t iso_request_index;
 uint8_t send_passes;
+uint8_t send_iso_passes;
 
 #define NUM_REQUESTS 27
 uint16_t request_pgn[NUM_REQUESTS] = {
@@ -213,6 +217,18 @@ uint16_t request_pgn[NUM_REQUESTS] = {
   65165  // Vehicle Electrical Power #2
 };
 
+#define NUM_ISO_REQUESTS 9
+uint16_t iso_request[NUM_ISO_REQUESTS] = {
+  0xF195, //System Supplier ECU Software Version Number
+  0xF190, //Vehicle Identfication Number
+  0xF193, //System Supplier ECU Hardware Version Number
+  0xF18C, //ECU Serial Number
+  0xF180, //Boot Software Identfication
+  0xF181, //Application Software Identfication
+  0xF186, //Active Diagnostic Session
+  0xF192, //System Supplier ECU Hardware Number
+  0xF197, //System Name or Engine Type
+};
     
 //Create a counter and timer to keep track of received message traffic
 #define RX_TIME_OUT 1000 //milliseconds
@@ -274,13 +290,6 @@ void load_buffer(){
     digitalWrite(RED_LED, RED_LED_state);  
   }
   
-  //Create a file if it is not open yet
-  if (!file_open) {
-    open_binFile();
-    Serial.print("Opened File ");
-    Serial.println(current_file_name);
-  }
-  
   // Check the current position and see if the buffer needs to be written to memory
   check_buffer();
 }
@@ -288,6 +297,13 @@ void load_buffer(){
 void check_buffer(){
   //Check to see if there is anymore room in the buffer
   if (current_position >= BUFFER_POSITION_LIMIT){ //max number of messages
+    //Create a file if it is not open yet
+    if (!file_open) {
+      open_binFile();
+      Serial.print("Opened File ");
+      Serial.println(current_file_name);
+    }
+  
     uint32_t start_micros = micros();
     
     // Write the beginning of each line in the 512 byte block
@@ -494,7 +510,7 @@ void sdErrorFlash(){
     digitalWrite(RED_LED,LOW);
     delay(50);
     // Try starting the SD Card again
-    if (sd.begin(SdioConfig(FIFO_SDIO))) break; 
+    if (sd.begin(SD_CONFIG)) break; 
   }
 }
 
@@ -541,10 +557,8 @@ void open_binFile(){
   else
   {
     YELLOW_LED_fast_blink_state == false;
-  
   }
 
-  
   //Move the current position to 4 since the first 4 bytes are taken.
   current_position = 4;
   binFile.truncate(0);
@@ -692,19 +706,19 @@ void myLongPressFunction(){
 
 
 void setup(void) {
-  
   commandString.reserve(256);
-
   
-  
+  //setup pin modes for the transeivers
   pinMode(SILENT_0,OUTPUT);
   pinMode(SILENT_1,OUTPUT);
   pinMode(SILENT_2,OUTPUT);
+  
   //Set High to prevent transmission for the CAN TXRX
   digitalWrite(SILENT_0,LOW); 
   digitalWrite(SILENT_1,LOW);
   digitalWrite(SILENT_2,LOW);
-  
+
+  // Setup chip select pin for the MCP2515
   pinMode(CS_CAN, OUTPUT);
   digitalWrite(CS_CAN,HIGH);
   
@@ -718,10 +732,11 @@ void setup(void) {
   digitalWrite(GREEN_LED,GREEN_LED_state);
   digitalWrite(YELLOW_LED,YELLOW_LED_state);
   digitalWrite(RED_LED,RED_LED_state);
-
-  // Setup the button with an internal pull-up :
+ 
+  // Setup the button with an internal pull-up
   pinMode(BUTTON_PIN,INPUT_PULLUP);
-
+  
+  // Setup button functions 
   button.attachClick(myClickFunction);
   button.attachDoubleClick(myDoubleClickFunction);
   button.attachLongPressStart(myLongPressStartFunction);
@@ -731,10 +746,10 @@ void setup(void) {
   button.setPressTicks(2000);
   button.setClickTicks(500);
   
+  // Select the CAN on J1939 Pins F and G
   pinMode(CAN_SWITCH,OUTPUT);
   digitalWrite(CAN_SWITCH,LOW);
 
-  //while(!Serial);
   Serial.println("Starting CAN logger.");
 
   Can0.setReportErrors(true);
@@ -746,6 +761,9 @@ void setup(void) {
 
   Can0.setListenOnly(true);
   Can1.setListenOnly(true);
+  
+  Can0.setSelfReception(true);
+  Can1.setSelfReception(true);
     
   //Flex CAN defaults
   txmsg.ext = 1;
@@ -772,7 +790,7 @@ void setup(void) {
   FsDateTime::callback = dateTime;
 
   // Mount the SD Card
-  if (!sd.begin(SdioConfig(FIFO_SDIO))) {
+  if (!sd.begin(SD_CONFIG)) {
       // If the SD card is missing, then it will f
       Serial.println("SdFs begin() failed. Please check the SD Card.");
       sdErrorFlash(); 
@@ -803,8 +821,8 @@ void setup(void) {
   if (!isFileNameValid(logger_name)) strcpy(logger_name, "2__");
   
   // Uncomment the following 2 lines to reset name
-//  strcpy(logger_name, "AAA");
-//  EEPROM.put(EEPROM_DEVICE_ID_ADDR,logger_name);
+  strcpy(logger_name, "2AA");
+  EEPROM.put(EEPROM_DEVICE_ID_ADDR,logger_name);
   
   EEPROM.get(EEPROM_FILE_ID_ADDR,current_file);
   if (!isFileNameValid(current_file)) strcpy(current_file, "000");
@@ -823,9 +841,10 @@ void setup(void) {
   Serial.println("Done.");
   
   sprintf(file_name_prefix,"%s%s",brand_name,logger_name);
+  Serial.print("The filename prefix is ");
+  Serial.println(file_name_prefix);
   
   recording = true;
-
   pinMode(POWER_PIN,INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(POWER_PIN), close_binFile, RISING);
 }
@@ -840,6 +859,8 @@ void loop(void) {
     if (stream) printFrame(rxmsg,0,RXCount0);
     if ((rxmsg.id & CAN_ERR_FLAG) == CAN_ERR_FLAG){
       ErrorCount0++;
+      RED_LED_state = !RED_LED_state;                       
+      digitalWrite(RED_LED,RED_LED_state);  
     }
   }
   if (Can1.read(rxmsg)){
@@ -849,6 +870,8 @@ void loop(void) {
     if (stream)printFrame(rxmsg,1,RXCount1);
     if ((rxmsg.id & CAN_ERR_FLAG) == CAN_ERR_FLAG){
       ErrorCount1++;
+      RED_LED_state = !RED_LED_state;                       
+      digitalWrite(RED_LED,RED_LED_state);    
     }
   }
   if (Can2.readMsgBuf(&rxId, &ext_flag, &len, rxBuf) == CAN_OK){
@@ -902,9 +925,47 @@ void loop(void) {
     {
       send_passes = 0;
       send_requests = false;
+      send_iso_requests = true;
     }
   }
-  
+  else if (send_iso_requests)
+  {
+    if (send_iso_passes < NUM_REQUEST_PASSES){
+      if (send_iso_request_timer > REQUEST_TIMING){
+        send_iso_request_timer = 0;
+        txmsg.len = 8;
+        txmsg.id = 0x18DA00F9;
+        txmsg.buf[0] = 0x02;
+        txmsg.buf[1] = (iso_request[request_index] & 0x00FF) >> 0 ;
+        txmsg.buf[2] = (iso_request[request_index] & 0xFF00) >> 8; //These are in reverse byte order.
+        send_Can0_message(txmsg);
+        send_Can1_message(txmsg);
+        send_Can2_message(txmsg);
+        //Toggle LED light as messages are sent
+        RED_LED_state = !RED_LED_state;                       
+        digitalWrite(RED_LED,RED_LED_state);  
+        request_index++;
+        if (request_index >= NUM_REQUESTS) {
+          request_index = 0;
+          send_iso_passes++;
+          //shuffle
+          //Serial.println("Shuffling Requests");
+          for (int i = 0; i < NUM_ISO_REQUESTS; i++) {
+            int j = random(i, NUM_ISO_REQUESTS);
+            auto temp = iso_request[i];
+            iso_request[i] = request_pgn[j];
+            iso_request[j] = temp;
+          }
+        }
+      }
+    }
+    else
+    {
+      send_passes = 0;
+      send_iso_requests = false;
+    }
+  }
+
   // Blink the LEDs if needed
   led_blink_routines();
 
@@ -923,6 +984,7 @@ void loop(void) {
     else if (commandString.equalsIgnoreCase("STOP"))       turn_recording_off();
     else if (commandString.equalsIgnoreCase("START"))      turn_recording_on();
     else if (commandString.equalsIgnoreCase("NEW"))        close_binFile();
+    else if (commandString.equalsIgnoreCase("DF"))         sd_capacity();
     else if (commandString.equalsIgnoreCase("LS"))         list_files();
     else if (commandString.equalsIgnoreCase("LS -A"))      list_files_a();
     else if (commandString.equalsIgnoreCase("FORMAT"))     format_sd_card();
@@ -930,6 +992,8 @@ void loop(void) {
     else if (commandString.equalsIgnoreCase("ERRORS"))     display_error_count();
     else if (commandString.equalsIgnoreCase("STREAM ON"))  turn_streaming_on();
     else if (commandString.equalsIgnoreCase("STREAM OFF")) turn_streaming_off();
+    else if (commandString.equalsIgnoreCase("REQUEST ON")) turn_requests_on();
+    else if (commandString.equalsIgnoreCase("REQUEST OFF"))turn_requests_off();
     else if (commandString.startsWith("baudRate")){
       char stream_file_name[13]; 
       strcpy(stream_file_name,"baudRate.txt");
@@ -950,8 +1014,35 @@ void loop(void) {
   button.tick();
 }
 
+void sd_capacity(){
+  uint32_t sectors_per_cluster = sd.sectorsPerCluster();
+  uint32_t cluster_count = sd.clusterCount();
+  uint32_t free_cluster_count = sd.freeClusterCount();
+   // Check for free space on the card.
+  Serial.print("SD Total Cluster Count: ");
+  Serial.println(cluster_count);
+  Serial.print("SD Free Cluster Count: ");
+  Serial.println(free_cluster_count);
+  Serial.print(F("Sectors per cluster: "));
+  Serial.println(sectors_per_cluster);
+  Serial.print(F("Free Space (MB): "));
+  Serial.println(double(free_cluster_count) * double(sectors_per_cluster) * 512 / 1000000.0);
+  Serial.print(F("Total Space (MB): "));
+  Serial.println(double(cluster_count) * double(sectors_per_cluster) * 512 / 1000000.0 );
+  
+  
+}
 
+void turn_requests_on(){
+  send_requests = true;
+  Serial.println("Send Requests On");
+}
 
+void turn_requests_off(){
+  send_requests = false;
+  send_iso_requests = false;
+  Serial.println("Send Requests Off");
+}
 void turn_recording_on(){
   recording = true;
   Serial.println("Recording On");
@@ -1010,28 +1101,23 @@ SdCardFactory cardFactory;
 SdCard* m_card = nullptr;
 ExFatFormatter exFatFormatter;
    
+
+SdExFat sdcard;
+
 void format_sd_card(){
   close_binFile();
-  m_card = cardFactory.newCard(SD_CONFIG);
-  if (!m_card || m_card->errorCode()) {    
-    Serial.println("card init failed.");
-    return;
+  sd.end();
+    if (!sdcard.cardBegin(SD_CONFIG)) {
+    Serial.println("cardBegin failed");
+  }    
+  if(!sdcard.format(&Serial)) {
+    Serial.println("format failed");
   }
-  
-  cardSectorCount = m_card->sectorCount();
-  if (!cardSectorCount) {
-    Serial.println("Get sector count failed.");
-    return;
+  if (!sdcard.volumeBegin()) {
+    Serial.println("volumeBegin failed");
   }
-  Serial.println("Formatting Card...");
-  ExFatFormatter exFatFormatter;
-  FatFormatter fatFormatter;
-  
-  // Format exFAT if larger than 32GB.
-  bool rtn = cardSectorCount > 67108864 ?
-    exFatFormatter.format(m_card, sectorBuffer, &Serial) :
-    fatFormatter.format(m_card, sectorBuffer, &Serial);
-  
-  Serial.println("Finished formatting.");
-  delay(150);
+  Serial.print(F("Bytes per cluster: "));
+  Serial.println(sdcard.bytesPerCluster());
+  Serial.println(F("Done"));
+  sdErrorFlash();
 }
