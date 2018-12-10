@@ -68,6 +68,7 @@ FastCRC32 CRC32;
 
 // Set up the SD Card object
 SdFs sd;
+//SdExFat sd;
 
 #define SD_CONFIG SdioConfig(FIFO_SDIO)
 
@@ -862,6 +863,17 @@ void loop(void) {
       RED_LED_state = !RED_LED_state;                       
       digitalWrite(RED_LED,RED_LED_state);  
     }
+    else if ((rxmsg.id & 0x00DAF900) == 0x00DAF900){
+      if ((rxmsg.buf[0] & 0xF0) == 0x10){ // First frame
+        txmsg.len = 3;
+        txmsg.id = 0x18DA00F9;
+        txmsg.buf[0] = 0x30; //Clear to send
+        txmsg.buf[1] = 0x00; // A Block Size of zero indicates the sender does not have to send a flow
+                             // control message for subsequent bytes
+        txmsg.buf[2] = 0x00; // Separation time in milliseconds
+        send_Can0_message(txmsg);        
+      }
+    }
   }
   if (Can1.read(rxmsg)){
     RXCount1++;
@@ -873,6 +885,17 @@ void loop(void) {
       RED_LED_state = !RED_LED_state;                       
       digitalWrite(RED_LED,RED_LED_state);    
     }
+    else if ((rxmsg.id & 0x00DAF900) == 0x00DAF900){
+      if ((rxmsg.buf[0] & 0xF0) == 0x10){ // First frame
+        txmsg.len = 3;
+        txmsg.id = 0x18DA00F9;
+        txmsg.buf[0] = 0x30; //Clear to send
+        txmsg.buf[1] = 0x00; // A Block Size of zero indicates the sender does not have to send a flow
+                             // control message for subsequent bytes
+        txmsg.buf[2] = 0x00; // Separation time in milliseconds
+        send_Can1_message(txmsg);        
+      }
+    }
   }
   if (Can2.readMsgBuf(&rxId, &ext_flag, &len, rxBuf) == CAN_OK){
     RXCount2++;
@@ -882,6 +905,17 @@ void loop(void) {
     current_channel = 2;
     if (recording) load_buffer();
     if (stream) printFrame(rxmsg,2,RXCount2);
+    if ((rxmsg.id & 0x00DAF900) == 0x00DAF900){
+      if ((rxmsg.buf[0] & 0xF0) == 0x10){ // First frame
+        txmsg.len = 3;
+        txmsg.id = 0x18DA00F9;
+        txmsg.buf[0] = 0x30; //Clear to send
+        txmsg.buf[1] = 0x00; // A Block Size of zero indicates the sender does not have to send a flow
+                             // control message for subsequent bytes
+        txmsg.buf[2] = 0x00; // Separation time in milliseconds
+        send_Can2_message(txmsg);       
+      }
+    }
   } 
 
   // Close the file if messages stop showing up.
@@ -1014,6 +1048,9 @@ void loop(void) {
   button.tick();
 }
 
+/*
+ * Print information regarding the SD Card to the Serial port.
+ */
 void sd_capacity(){
   uint32_t sectors_per_cluster = sd.sectorsPerCluster();
   uint32_t cluster_count = sd.clusterCount();
@@ -1029,8 +1066,6 @@ void sd_capacity(){
   Serial.println(double(free_cluster_count) * double(sectors_per_cluster) * 512 / 1000000.0);
   Serial.print(F("Total Space (MB): "));
   Serial.println(double(cluster_count) * double(sectors_per_cluster) * 512 / 1000000.0 );
-  
-  
 }
 
 void turn_requests_on(){
@@ -1089,35 +1124,37 @@ void list_files_a(){
   sd.ls(LS_DATE | LS_SIZE | LS_R);     
 }
 
-
-/*
- * 
- */
-#define SD_CONFIG SdioConfig(FIFO_SDIO)
+//==============================================================================
+// Serial output stream
+ArduinoOutStream cout(Serial);
+//------------------------------------------------------------------------------
 uint32_t cardSectorCount = 0;
 uint8_t  sectorBuffer[512];
+//------------------------------------------------------------------------------
+// SdCardFactory constructs and initializes the appropriate card.
 SdCardFactory cardFactory;
-
+// Pointer to generic SD card.
 SdCard* m_card = nullptr;
-ExFatFormatter exFatFormatter;
-   
-
-SdExFat sdcard;
 
 void format_sd_card(){
   close_binFile();
   sd.end();
-    if (!sdcard.cardBegin(SD_CONFIG)) {
-    Serial.println("cardBegin failed");
-  }    
-  if(!sdcard.format(&Serial)) {
-    Serial.println("format failed");
+  delay(100);
+  // Select and initialize proper card driver.
+  m_card = cardFactory.newCard(SD_CONFIG);
+  if (!m_card || m_card->errorCode()) {    
+    Serial.println("card init failed.");
+    return;
   }
-  if (!sdcard.volumeBegin()) {
-    Serial.println("volumeBegin failed");
-  }
-  Serial.print(F("Bytes per cluster: "));
-  Serial.println(sdcard.bytesPerCluster());
+  ExFatFormatter exFatFormatter;
+  //FatFormatter fatFormatter;
+  
+  // Format exFAT if larger than 32GB.
+ // bool rtn = cardSectorCount > 67108864 ?
+    exFatFormatter.format(m_card, sectorBuffer, &Serial);//:
+    //fatFormatter.format(m_card, sectorBuffer, &Serial);
+    
   Serial.println(F("Done"));
+  delay(100);
   sdErrorFlash();
 }
