@@ -334,7 +334,10 @@ void check_buffer(){
       Serial.println("write failed");
       sdErrorFlash(); 
     }
-   
+
+    //Reset the record
+    memset(&data_buffer,0xFF,512);
+    
     //Record write times for the previous frame, since the existing frame was just written
     uint32_t elapsed_micros = micros() - start_micros;
     memcpy(&data_buffer[505], &elapsed_micros, 3);
@@ -466,27 +469,34 @@ void dateTime(uint16_t* FSdate, uint16_t* FStime) {
 void send_Can2_message(CAN_message_t &txmsg){
   if (TXTimer2 >= TX_MESSAGE_TIME){
     //Send message in format: ID, Standard (0) or Extended ID (1), message length, txmsg
+    digitalWrite(SILENT_2,LOW);
     Can2.sendMsgBuf(txmsg.id, 1, txmsg.len, txmsg.buf);  
     TXCount2++;
     TXTimer2 = 0;
+    digitalWrite(SILENT_2,HIGH);
   }  
 }
 
 void send_Can0_message(CAN_message_t &txmsg){
   if (TXTimer0 >= TX_MESSAGE_TIME){    
     //Send message in FlexCAN format
+    digitalWrite(SILENT_0,LOW);
     Can0.write(txmsg);
     TXCount0++;
     TXTimer0 = 0;
+    digitalWrite(SILENT_0,HIGH);
+    
   }
 }    
 
 void send_Can1_message(CAN_message_t &txmsg){
   if (TXTimer1 >= TX_MESSAGE_TIME){    
     //Send message in FlexCAN format
+    digitalWrite(SILENT_1,LOW);
     Can1.write(txmsg);
     TXCount1++;
     TXTimer1 = 0;
+    digitalWrite(SILENT_1,HIGH);
   }
 }
 
@@ -568,6 +578,10 @@ void open_binFile(){
 }
 
 void close_binFile(){
+  // Add integrity to the last line of the file.
+  uint32_t checksum = CRC32.crc32(data_buffer, 508);
+  memcpy(&data_buffer[508], &checksum, 4);
+  
   //Write the last set of data
   binFile.write(data_buffer, BUFFER_SIZE);
   binFile.close();
@@ -717,7 +731,7 @@ void setup(void) {
   //Set High to prevent transmission for the CAN TXRX
   digitalWrite(SILENT_0,LOW); 
   digitalWrite(SILENT_1,LOW);
-  digitalWrite(SILENT_2,LOW);
+  digitalWrite(SILENT_2,HIGH);
 
   // Setup chip select pin for the MCP2515
   pinMode(CS_CAN, OUTPUT);
@@ -773,7 +787,7 @@ void setup(void) {
   // Setup MCP CAN
   if(Can2.begin(MCP_ANY, CAN_250KBPS, MCP_16MHZ) == CAN_OK) Serial.println("MCP2515 Initialized Successfully!");
   else Serial.println("Error Initializing MCP2515...");
-  Can2.setMode(MCP_LISTENONLY);
+  Can2.setMode(MCP_NORMAL);
 
   // Setup timing services
   setSyncProvider(getTeensy3Time);
@@ -935,8 +949,8 @@ void loop(void) {
         txmsg.buf[1] = (request_pgn[request_index] & 0x00FF00) >> 8 ;
         txmsg.buf[2] = (request_pgn[request_index] & 0xFF0000) >> 16; //These are in reverse byte order.
         send_Can0_message(txmsg);
-        send_Can1_message(txmsg);
-        send_Can2_message(txmsg);
+        if (RXCount1 > 0) send_Can1_message(txmsg);
+        if (RXCount2 > 0) send_Can2_message(txmsg);
         //Toggle LED light as messages are sent
         RED_LED_state = !RED_LED_state;                       
         digitalWrite(RED_LED,RED_LED_state);  
@@ -973,8 +987,8 @@ void loop(void) {
         txmsg.buf[1] = (iso_request[request_index] & 0x00FF) >> 0 ;
         txmsg.buf[2] = (iso_request[request_index] & 0xFF00) >> 8; //These are in reverse byte order.
         send_Can0_message(txmsg);
-        send_Can1_message(txmsg);
-        send_Can2_message(txmsg);
+        if (RXCount1 > 0) send_Can1_message(txmsg); //onlt send something if the network is alive
+        if (RXCount2 > 0) send_Can2_message(txmsg);
         //Toggle LED light as messages are sent
         RED_LED_state = !RED_LED_state;                       
         digitalWrite(RED_LED,RED_LED_state);  
