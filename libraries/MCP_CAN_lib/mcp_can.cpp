@@ -1173,9 +1173,9 @@ INT8U MCP_CAN::readMsgBuf(INT32U *id, INT8U *ext, INT8U *len, INT8U buf[])
 *********************************************************************************************************/
 INT8U MCP_CAN::readMsgBuf(INT32U *id, INT8U *len, INT8U buf[])
 {
-    if(readMsg() == CAN_NOMSG) {
-      return CAN_NOMSG;  
-    } 
+    if(readMsg() == CAN_NOMSG) 
+    return CAN_NOMSG;  
+    
 
     if (m_nExtFlg)
         m_nID |= 0x80000000;

@@ -1,3 +1,0 @@
-#define SECRET_SSID "NETGEAR81"
-#define SECRET_PASS ""
-
