@@ -38,7 +38,9 @@ You may also need to remove the pre-installed FlexCAN_Library:
 
 
 ## Logger Device Test Programs
-### Test_LED_with_Button: 
+The test programs are in the `tests` directory
+
+### `Test_LED_with_Button` 
 Test code used to turn on three LEDs by pushing the button. The sketch makes use of the follwing defines based on the circuit design:
 
 ```
@@ -48,8 +50,8 @@ Test code used to turn on three LEDs by pushing the button. The sketch makes use
 #define button 21
 ```
 
-### Test_CAN0_and_CAN1 
-Test codes used to send/receive CAN message periodically on both channels CAN0 and CAN1 using FLEX CAN library. The library can be accessed here: https://github.com/Heavy-Vehicle-Networking-At-U-Tulsa/FlexCAN_Library
+### `Test_CAN0_and_CAN1`
+Test codes used to send/receive CAN message periodically on both channels CAN0 and CAN1 using FLEX CAN library. 
 
 This makes use of the following defines for the Silent Pins on the transceivers:
 ```
@@ -60,20 +62,19 @@ This makes use of the following defines for the Silent Pins on the transceivers:
 Pull the silent pins low for transmission.
 
 
-### MCP2515 
-test codes used to send/receive CAN message periodically through third CAN channel using MCP library. The library can be accessed here: https://github.com/Heavy-Vehicle-Networking-At-U-Tulsa/NMFTA-CAN-Logger/tree/master/Arduino_Libraries_to_Install/MCP2515
+### `Test_MCP2515_Receive and Test_MCP2515_Send`
+Test code used to send/receive CAN message periodically through third CAN channel using MCP library. 
 
-### WiFi 
-Test codes used to wireless communicate through WiFi between the WiFi chip on the logger with one another. The WiFi 101 library can be accessed here: https://github.com/adafruit/Adafruit_WINC1500. To correctly use the WiFi chip on the Logger 2, SPI1 has to be selected by: Adafruit_WINC1500-master>src>bus_wrapper>source>nm_bus_wrapper_samd221.cpp, change line 54 to #define WINC1501_SPI SPI1.
-
-### Flood the BUS with button
-Test code to send messages with top priority messages at maximum speed to flood the bus as the button is pressed.
-
-### WiFi 
-Test codes used to wireless communicate through WiFi between the WiFi chip on the logger with one another. The WiFi 101 library can be accessed here: https://github.com/adafruit/Adafruit_WINC1500. To correctly use the WiFi chip on the Logger 2, SPI1 has to be selected by: Adafruit_WINC1500-master>src>bus_wrapper>source>nm_bus_wrapper_samd221.cpp, change line 54 to #define WINC1501_SPI SPI1.
+## Utilities
+There are a few utilities useful when using the CAN Logger 2.
 
 ### Flood the BUS with button
 Test code to send messages with top priority messages at maximum speed to flood the bus as the button is pressed.
+
+## WiFi
+The CAN Logger 2 has a the ATWINC1500 Wifi module. By default, this module is disabled (i.e. not wired correctly.) If the wiring is fixed, then the Wifi can be used. 
+Test codes used to wireless communicate through WiFi between the WiFi chip on the logger with one another. The WiFi 101 library can be accessed here: https://github.com/adafruit/Adafruit_WINC1500. To correctly use the WiFi chip on the Logger 2, SPI1 has to be selected by: Adafruit_WINC1500-master>src>bus_wrapper>source>nm_bus_wrapper_samd221.cpp, change line 54 to #define WINC1501_SPI SPI1.
+
 
 ## Acknowledgements 
 This material is based upon work supported by the National Science Foundation under Grant No. 1715409.

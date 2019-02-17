@@ -68,7 +68,6 @@ FastCRC32 CRC32;
 
 // Set up the SD Card object
 SdFs sd;
-//SdExFat sd;
 
 #define SD_CONFIG SdioConfig(FIFO_SDIO)
 
