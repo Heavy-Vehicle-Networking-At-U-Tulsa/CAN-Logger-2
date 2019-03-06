@@ -1,7 +1,9 @@
 /*
  * NMFTA CAN Logger 2 Project
  * 
- * Arduino Sketch to test the ability to receive and log CAN messages
+ * Arduino Sketch for the CAN Logger 2 to record up to 3 CAN channels using
+ * a Teensy 3.6. See https://github.com/Heavy-Vehicle-Networking-At-U-Tulsa/CAN-Logger-2
+ * for more details.
  * 
  * Written By Dr. Jeremy S. Daily
  * The University of Tulsa
@@ -243,8 +245,12 @@ uint32_t ErrorCount0 = 0;
 uint32_t ErrorCount1 = 0;
 uint32_t ErrorCount2 = 0;
 
-// Should we stream the CAN frame to the serial port?
+// Should we stream the CAN frame to the serial port? Serial 
+// can't keep up with heavy CAN bus loads, so this is default to false.
 bool stream = false;
+
+// Track the state of the user's desire to log. This can toggle based 
+// on user input.
 bool recording = true;
 
 /*
@@ -254,7 +260,7 @@ bool recording = true;
  * Note: an additional channel byte was added when comparing to the 
  * NMFTA CAN Logger 1 files. 
  * 
- * Use this function to understand the binary file format.
+ * Use this function to understand how the the binary file format was created.
  * When reading the binary, be sure to read it in 512 byte chunks.
  */
 void load_buffer(){
@@ -277,7 +283,9 @@ void load_buffer(){
 
   memcpy(&data_buffer[current_position], &rxmsg.id, 4);
   current_position += 4;
-  
+
+  // Store the message length as the most significant byte and use the 
+  // lower 24 bits to store the microsecond counter for each second.
   uint32_t DLC = (rxmsg.len << 24) | (0x00FFFFFF & uint32_t(microsecondsPerSecond));
   memcpy(&data_buffer[current_position], &DLC, 4);
   current_position += 4;
@@ -290,7 +298,8 @@ void load_buffer(){
     digitalWrite(RED_LED, RED_LED_state);  
   }
   
-  // Check the current position and see if the buffer needs to be written to memory
+  // Check the current position and see if the buffer needs to be written 
+  // to the SD card.
   check_buffer();
 }
 
@@ -863,16 +872,13 @@ void setup(void) {
   attachInterrupt(digitalPinToInterrupt(POWER_PIN), close_binFile, RISING);
 }
 
-
-void loop(void) {
-  // monitor the CAN channels
-  if (Can0.read(rxmsg)){
-    RXCount0++;
-    current_channel = 0;
+void rx_message_routine(){
     if (recording) load_buffer();
     if (stream) printFrame(rxmsg,0,RXCount0);
     if ((rxmsg.id & CAN_ERR_FLAG) == CAN_ERR_FLAG){
-      ErrorCount0++;
+      if (current_channel == 0) ErrorCount0++;
+      else if (current_channel == 1) ErrorCount1++;
+      else if (current_channel == 2) ErrorCount2++;
       RED_LED_state = !RED_LED_state;                       
       digitalWrite(RED_LED,RED_LED_state);  
     }
@@ -884,31 +890,23 @@ void loop(void) {
         txmsg.buf[1] = 0x00; // A Block Size of zero indicates the sender does not have to send a flow
                              // control message for subsequent bytes
         txmsg.buf[2] = 0x00; // Separation time in milliseconds
-        send_Can0_message(txmsg);        
+        if (current_channel == 0) send_Can0_message(txmsg);
+        else if (current_channel == 1) send_Can1_message(txmsg);
+        else if (current_channel == 2) send_Can2_message(txmsg);
       }
     }
+}
+
+void loop(void) {
+  // monitor the CAN channels
+  if (Can0.read(rxmsg)){
+    RXCount0++;
+    current_channel = 0;
+    rx_message_routine();
   }
   if (Can1.read(rxmsg)){
     RXCount1++;
     current_channel = 1;
-    if (recording) load_buffer();
-    if (stream)printFrame(rxmsg,1,RXCount1);
-    if ((rxmsg.id & CAN_ERR_FLAG) == CAN_ERR_FLAG){
-      ErrorCount1++;
-      RED_LED_state = !RED_LED_state;                       
-      digitalWrite(RED_LED,RED_LED_state);    
-    }
-    else if ((rxmsg.id & 0x00DAF900) == 0x00DAF900){
-      if ((rxmsg.buf[0] & 0xF0) == 0x10){ // First frame
-        txmsg.len = 3;
-        txmsg.id = 0x18DA00F9;
-        txmsg.buf[0] = 0x30; //Clear to send
-        txmsg.buf[1] = 0x00; // A Block Size of zero indicates the sender does not have to send a flow
-                             // control message for subsequent bytes
-        txmsg.buf[2] = 0x00; // Separation time in milliseconds
-        send_Can1_message(txmsg);        
-      }
-    }
   }
   if (Can2.readMsgBuf(&rxId, &ext_flag, &len, rxBuf) == CAN_OK){
     RXCount2++;
@@ -916,19 +914,6 @@ void loop(void) {
     rxmsg.len = uint8_t(len);
     rxmsg.id = uint32_t(rxId);
     current_channel = 2;
-    if (recording) load_buffer();
-    if (stream) printFrame(rxmsg,2,RXCount2);
-    if ((rxmsg.id & 0x00DAF900) == 0x00DAF900){
-      if ((rxmsg.buf[0] & 0xF0) == 0x10){ // First frame
-        txmsg.len = 3;
-        txmsg.id = 0x18DA00F9;
-        txmsg.buf[0] = 0x30; //Clear to send
-        txmsg.buf[1] = 0x00; // A Block Size of zero indicates the sender does not have to send a flow
-                             // control message for subsequent bytes
-        txmsg.buf[2] = 0x00; // Separation time in milliseconds
-        send_Can2_message(txmsg);       
-      }
-    }
   } 
 
   // Close the file if messages stop showing up.
@@ -986,8 +971,8 @@ void loop(void) {
         txmsg.buf[1] = (iso_request[request_index] & 0x00FF) >> 0 ;
         txmsg.buf[2] = (iso_request[request_index] & 0xFF00) >> 8; //These are in reverse byte order.
         send_Can0_message(txmsg);
-        if (RXCount1 > 0) send_Can1_message(txmsg); //onlt send something if the network is alive
-        if (RXCount2 > 0) send_Can2_message(txmsg);
+        if (RXCount1 > 0) send_Can1_message(txmsg); //only send something if the network is alive
+        if (RXCount2 > 0) send_Can2_message(txmsg); //only send something if the network is alive
         //Toggle LED light as messages are sent
         RED_LED_state = !RED_LED_state;                       
         digitalWrite(RED_LED,RED_LED_state);  
@@ -1012,9 +997,6 @@ void loop(void) {
       send_iso_requests = false;
     }
   }
-
-  // Blink the LEDs if needed
-  led_blink_routines();
 
   //digitalWrite(RED_LED,digitalRead(POWER_PIN));
   

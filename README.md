@@ -23,7 +23,7 @@ Navigate to the submodule directory within this repository and select the name o
 
 If there is an error in importing the libraries, you may need to remove exising libraries (see below).
 
-### Removing Existing Libraries 
+#### Removing Existing Libraries 
 Once the modules are updated, you need to make them available to your Arduino environment. Again, assuming Windows, open Git Bash.
 
 ```cd ~/Documents/Arduino/libraries```
@@ -36,6 +36,11 @@ You may also need to remove the pre-installed FlexCAN_Library:
 
 ``` rm -r FlexCAN_Library``` or other libraries.
 
+
+## Usage
+The following charts show the functionality of the CAN Logger 2 units. These charts are available as a pdf and include program flow and data structures.
+
+[NMFTA TU CAN Logger 2 Diagrams](docs/NMFTA_TU_CAN_Logger_2.pdf)
 
 ## Logger Device Test Programs
 The test programs are in the `tests` directory
