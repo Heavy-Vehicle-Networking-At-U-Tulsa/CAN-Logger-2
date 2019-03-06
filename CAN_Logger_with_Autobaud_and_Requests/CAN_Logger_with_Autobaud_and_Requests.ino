@@ -1033,6 +1033,25 @@ void loop(void) {
       commandString.toCharArray(stream_file_name,13);
       stream_binary(stream_file_name);     
     }
+    else if (commandString.equalsIgnoreCase("HELP")){
+      Serial.println("List of available commands:");
+      Serial.println("HEX   (Print the latest file in HEX, recording needs to be off)");
+      Serial.println("BIN   (Print the latest file in HEX ,recording needs to be off)");
+      Serial.println("DEL [file-name.bin]   (Delete the chosen file in the SD card)");
+      Serial.println("STOP   (Turn recording off)");
+      Serial.println("START   (Turn recording on)");
+      Serial.println("NEW   (Start a new log file)");
+      Serial.println("DF    (Show SD card capacity)");
+      Serial.println("LS    (List files in the SD card)");
+      Serial.println("LS -A   (List files in the SD card with time stamp)");
+      Serial.println("FORMAT    (Format the SD card)");
+      Serial.println("BAUD    (Display current baudrate on the channels)");
+      Serial.println("ERRORS    (Display error count on the channels)");
+      Serial.println("REQUEST ON  (Turn requests on)");
+      Serial.println("REQUEST OFF   (Turn request off)");
+      Serial.println("baudRate    (Show the baudrate in each log file)");
+
+    }
     else {
       Serial.println(("Unknown Command"));
     }
