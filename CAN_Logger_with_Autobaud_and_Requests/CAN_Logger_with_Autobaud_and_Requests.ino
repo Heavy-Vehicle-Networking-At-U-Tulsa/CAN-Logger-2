@@ -874,7 +874,7 @@ void setup(void) {
 
 void rx_message_routine(){
     if (recording) load_buffer();
-    if (stream) printFrame(rxmsg,0,RXCount0);
+    if (stream) printFrame(rxmsg,current_channel,RXCount0);
     if ((rxmsg.id & CAN_ERR_FLAG) == CAN_ERR_FLAG){
       if (current_channel == 0) ErrorCount0++;
       else if (current_channel == 1) ErrorCount1++;
@@ -907,6 +907,7 @@ void loop(void) {
   if (Can1.read(rxmsg)){
     RXCount1++;
     current_channel = 1;
+    rx_message_routine();
   }
   if (Can2.readMsgBuf(&rxId, &ext_flag, &len, rxBuf) == CAN_OK){
     RXCount2++;
@@ -914,6 +915,7 @@ void loop(void) {
     rxmsg.len = uint8_t(len);
     rxmsg.id = uint32_t(rxId);
     current_channel = 2;
+    rx_message_routine();
   } 
 
   // Close the file if messages stop showing up.
