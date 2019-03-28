@@ -711,6 +711,7 @@ void myClickFunction(){
 
 void myDoubleClickFunction(){
     close_binFile();
+    setup();
   }
 
 void myLongPressStopFunction(){
@@ -844,7 +845,7 @@ void setup(void) {
   if (!isFileNameValid(logger_name)) strcpy(logger_name, "2__");
   
   // Uncomment the following 2 lines to reset name
-  strcpy(logger_name, "2AA");
+  strcpy(logger_name, "201");
   EEPROM.put(EEPROM_DEVICE_ID_ADDR,logger_name);
   
   EEPROM.get(EEPROM_FILE_ID_ADDR,current_file);
@@ -923,6 +924,8 @@ void loop(void) {
     close_binFile();
     RXTimer = 0;
   }
+  
+  led_blink_routines();
   
   // Send requests for additional data if needed
   if (send_requests){
