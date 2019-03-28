@@ -872,9 +872,9 @@ void setup(void) {
   attachInterrupt(digitalPinToInterrupt(POWER_PIN), close_binFile, RISING);
 }
 
-void rx_message_routine(){
+void rx_message_routine(uint32_t RXCount){
     if (recording) load_buffer();
-    if (stream) printFrame(rxmsg,0,RXCount0);
+    if (stream) printFrame(rxmsg,current_channel,RXCount);
     if ((rxmsg.id & CAN_ERR_FLAG) == CAN_ERR_FLAG){
       if (current_channel == 0) ErrorCount0++;
       else if (current_channel == 1) ErrorCount1++;
@@ -902,11 +902,12 @@ void loop(void) {
   if (Can0.read(rxmsg)){
     RXCount0++;
     current_channel = 0;
-    rx_message_routine();
+    rx_message_routine(RXCount0);
   }
   if (Can1.read(rxmsg)){
     RXCount1++;
     current_channel = 1;
+    rx_message_routine(RXCount1);
   }
   if (Can2.readMsgBuf(&rxId, &ext_flag, &len, rxBuf) == CAN_OK){
     RXCount2++;
@@ -914,6 +915,7 @@ void loop(void) {
     rxmsg.len = uint8_t(len);
     rxmsg.id = uint32_t(rxId);
     current_channel = 2;
+    rx_message_routine(RXCount2);
   } 
 
   // Close the file if messages stop showing up.
@@ -997,8 +999,6 @@ void loop(void) {
       send_iso_requests = false;
     }
   }
-
-  //digitalWrite(RED_LED,digitalRead(POWER_PIN));
   
   if (Serial.available() >= 2) {
     commandString = Serial.readStringUntil('\n');
@@ -1159,20 +1159,13 @@ void format_sd_card(){
   close_binFile();
   sd.end();
   delay(100);
-  // Select and initialize proper card driver.
   m_card = cardFactory.newCard(SD_CONFIG);
   if (!m_card || m_card->errorCode()) {    
     Serial.println("card init failed.");
     return;
   }
   ExFatFormatter exFatFormatter;
-  //FatFormatter fatFormatter;
-  
-  // Format exFAT if larger than 32GB.
- // bool rtn = cardSectorCount > 67108864 ?
-    exFatFormatter.format(m_card, sectorBuffer, &Serial);//:
-    //fatFormatter.format(m_card, sectorBuffer, &Serial);
-    
+  exFatFormatter.format(m_card, sectorBuffer, &Serial);//:
   Serial.println(F("Done"));
   delay(100);
   sdErrorFlash();
