@@ -845,8 +845,8 @@ void setup(void) {
   if (!isFileNameValid(logger_name)) strcpy(logger_name, "2__");
   
   // Uncomment the following 2 lines to reset name
-  strcpy(logger_name, "201");
-  EEPROM.put(EEPROM_DEVICE_ID_ADDR,logger_name);
+  //strcpy(logger_name, "2AA");
+  //EEPROM.put(EEPROM_DEVICE_ID_ADDR,logger_name);
   
   EEPROM.get(EEPROM_FILE_ID_ADDR,current_file);
   if (!isFileNameValid(current_file)) strcpy(current_file, "000");
@@ -1036,10 +1036,15 @@ void loop(void) {
       commandString.toCharArray(stream_file_name,13);
       stream_binary(stream_file_name);     
     }
+    else if (commandString.startsWith("ID ")){
+      commandString.remove(0,3);
+      commandString.toCharArray(logger_name,4);
+      EEPROM.put(EEPROM_DEVICE_ID_ADDR,logger_name);
+    }
     else if (commandString.equalsIgnoreCase("HELP")){
       Serial.println("List of available commands:");
-      Serial.println("HEX   (Print the latest file in HEX, recording needs to be off)");
-      Serial.println("BIN   (Print the latest file in HEX ,recording needs to be off)");
+      Serial.println("HEX   (Print the latest log file in HEX, recording needs to be off)");
+      Serial.println("BIN   (Print the latest log file in BIN ,recording needs to be off)");
       Serial.println("DEL [file-name.bin]   (Delete the chosen file in the SD card)");
       Serial.println("STOP   (Turn recording off)");
       Serial.println("START   (Turn recording on)");
@@ -1053,7 +1058,7 @@ void loop(void) {
       Serial.println("REQUEST ON  (Turn requests on)");
       Serial.println("REQUEST OFF   (Turn request off)");
       Serial.println("baudRate    (Show the baudrate in each log file)");
-
+      Serial.println("ID [Version + Serial Number]    (Change device version and serial number, ID 201 means version 2 serial number 01)");
     }
     else {
       Serial.println(("Unknown Command"));
