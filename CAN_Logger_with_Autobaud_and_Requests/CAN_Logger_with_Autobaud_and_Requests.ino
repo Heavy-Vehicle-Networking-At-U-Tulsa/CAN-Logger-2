@@ -711,6 +711,7 @@ void myClickFunction(){
 
 void myDoubleClickFunction(){
     close_binFile();
+    setup();
   }
 
 void myLongPressStopFunction(){
@@ -923,6 +924,8 @@ void loop(void) {
     close_binFile();
     RXTimer = 0;
   }
+  
+  led_blink_routines();
   
   // Send requests for additional data if needed
   if (send_requests){
