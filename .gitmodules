@@ -1,15 +1,15 @@
 [submodule "libraries/FlexCAN_Library"]
 	path = libraries/FlexCAN_Library
-	url = https://github.com/Heavy-Vehicle-Networking-At-U-Tulsa/FlexCAN_Library.git
+	url = git@github.com:Heavy-Vehicle-Networking-At-U-Tulsa/FlexCAN_Library.git
 [submodule "libraries/MCP_CAN_lib"]
 	path = libraries/MCP_CAN_lib
-	url = https://github.com/Heavy-Vehicle-Networking-At-U-Tulsa/MCP_CAN_lib.git
+	url = git@github.com:Heavy-Vehicle-Networking-At-U-Tulsa/MCP_CAN_lib.git
 [submodule "libraries/WiFi101"]
 	path = libraries/WiFi101
-	url = https://github.com/arduino-libraries/WiFi101.git
+	url = git@github.com:arduino-libraries/WiFi101.git
 [submodule "libraries/OneButton"]
 	path = libraries/OneButton
-	url = https://github.com/mathertel/OneButton.git
+	url = git@github.com:mathertel/OneButton.git
 [submodule "libraries/SdFs"]
 	path = libraries/SdFs
-	url = https://github.com/greiman/SdFs.git
+	url = git@github.com:greiman/SdFs.git
