@@ -68,6 +68,10 @@ FastCRC32 CRC32;
 // Setup a limit to turn off the CAN controller after this many messages.
 #define ERROR_COUNT_LIMIT 5000
 
+// setup the length for a serial command buffer to control the logger 2.
+#define COMMAND_BUFFER_LEN 20 
+char command_buffer[COMMAND_BUFFER_LEN];
+
 // Set up the SD Card object
 SdFs sd;
 
@@ -77,7 +81,6 @@ SdFs sd;
 FsFile binFile;
 FsFile baudFile;
 
- 
 String directory_listing;
 
 // All CAN messages are received in the FlexCAN structure
@@ -178,7 +181,7 @@ elapsedMillis TXTimer2;
 
 // To use a button to send requests, we need to track it.
 #define NUM_REQUEST_PASSES 3
-#define REQUEST_TIMING 200 //milliseconds
+#define REQUEST_TIMING 250 //milliseconds
 elapsedMillis send_request_timer;
 elapsedMillis send_iso_request_timer;
 boolean send_requests;
@@ -357,10 +360,11 @@ void check_buffer(){
 }
 
 void print_hex(){
+  turn_recording_off();
+  turn_streaming_off();
   char line[512];
   if (!binFile.isOpen()) close_binFile();
-  if (sd.exists(current_file_name))
-  {
+  if (sd.exists(current_file_name)){
     binFile.open(current_file_name, O_READ);
     while (binFile.read(line, sizeof(line)) > 0) {
       for (uint16_t i = 0; i < sizeof(line); i++){
@@ -370,6 +374,8 @@ void print_hex(){
       }  
       Serial.println();
     }
+    binFile.close();
+    setup();
   }
   else
   {
@@ -390,10 +396,11 @@ void delete_file(char delete_file_name[]){
 }
 
 void stream_binary(char stream_file_name[]){
+  turn_streaming_off();
+  turn_recording_off();
   char line[512];
   if (!binFile.isOpen()) close_binFile();
-  if (sd.exists(stream_file_name))
-  {
+  if (sd.exists(stream_file_name)){
     binFile.open(stream_file_name, O_READ);
     while (binFile.read(line, sizeof(line)) > 0) 
     {
@@ -402,35 +409,29 @@ void stream_binary(char stream_file_name[]){
         Serial.write(line[i]);
       }  
     }
-    YELLOW_LED_fast_blink_state = false;
+    binFile.close();
+    setup();
   }
   else
   {
-    YELLOW_LED_fast_blink_state = true;
+    Serial.println("Current file does not exist");
   }
 }
 
 void stream_text(char stream_file_name[]){
-  char c;
+  turn_streaming_off();
   FsFile textFile; 
   if (sd.exists(stream_file_name))
   {
     textFile.open(stream_file_name, O_READ);
-    if (textFile){
-      while (textFile.available()) 
-      {
-        Serial.write(textFile.read());
-      }
-      YELLOW_LED_fast_blink_state = false;
-    }
-    else
+    while (textFile.available()) 
     {
-      YELLOW_LED_fast_blink_state = true;
+      Serial.write(textFile.read());
     }
   }
   else
   {
-    YELLOW_LED_fast_blink_state = true;
+    Serial.println("Current file does not exist");
   }
 }
 
@@ -477,34 +478,32 @@ void dateTime(uint16_t* FSdate, uint16_t* FStime) {
 void send_Can2_message(CAN_message_t &txmsg){
   if (TXTimer2 >= TX_MESSAGE_TIME){
     //Send message in format: ID, Standard (0) or Extended ID (1), message length, txmsg
-    digitalWrite(SILENT_2,LOW);
     Can2.sendMsgBuf(txmsg.id, 1, txmsg.len, txmsg.buf);  
     TXCount2++;
     TXTimer2 = 0;
-    digitalWrite(SILENT_2,HIGH);
   }  
 }
 
+
+/*
+ * Routines for the FlexCAN Controller on Can0 and Can1
+ * Can0 is usually J1939
+ */
 void send_Can0_message(CAN_message_t &txmsg){
   if (TXTimer0 >= TX_MESSAGE_TIME){    
     //Send message in FlexCAN format
-    digitalWrite(SILENT_0,LOW);
     Can0.write(txmsg);
     TXCount0++;
-    TXTimer0 = 0;
-    digitalWrite(SILENT_0,HIGH);
-    
+    TXTimer0 = 0;   
   }
 }    
 
 void send_Can1_message(CAN_message_t &txmsg){
-  if (TXTimer1 >= TX_MESSAGE_TIME){    
+  if (TXTimer1 >= TX_MESSAGE_TIME){ // Keep from flooding the bus.   
     //Send message in FlexCAN format
-    digitalWrite(SILENT_1,LOW);
     Can1.write(txmsg);
     TXCount1++;
     TXTimer1 = 0;
-    digitalWrite(SILENT_1,HIGH);
   }
 }
 
@@ -705,8 +704,7 @@ void led_blink_routines(){
 }
 
 void myClickFunction(){
-    send_request_timer = 0;
-    send_requests = true;
+    turn_requests_on();
 }
 
 void myDoubleClickFunction(){
@@ -842,22 +840,17 @@ void setup(void) {
 
   Serial.print("Reading from EEPROM... ");
   EEPROM.get(EEPROM_DEVICE_ID_ADDR,logger_name);
-  if (!isFileNameValid(logger_name)) strcpy(logger_name, "2__");
-  
+  if (!isFileNameValid(logger_name)) strcpy(logger_name, "2__"); 
   // Uncomment the following 2 lines to reset name
   //strcpy(logger_name, "2AA");
   //EEPROM.put(EEPROM_DEVICE_ID_ADDR,logger_name);
   
   EEPROM.get(EEPROM_FILE_ID_ADDR,current_file);
   if (!isFileNameValid(current_file)) strcpy(current_file, "000");
+  // reset the counter with the count command
   
-  // Uncomment the following 2 lines to reset the counter
-//  strcpy(current_file, "000");
-//  EEPROM.put(EEPROM_FILE_ID_ADDR,current_file);
-
   EEPROM.get(EEPROM_BRAND_NAME_ADDR,brand_name);
-  if (!isFileNameValid(brand_name)) strcpy(brand_name, "TU");
-  
+  if (!isFileNameValid(brand_name)) strcpy(brand_name, "TU"); 
   // Uncomment the following 2 lines to reset the brand name
   //strcpy(brand_name, "TU");
   //EEPROM.put(EEPROM_BRAND_NAME_ADDR,brand_name);
@@ -874,28 +867,28 @@ void setup(void) {
 }
 
 void rx_message_routine(uint32_t RXCount){
-    if (recording) load_buffer();
-    if (stream) printFrame(rxmsg,current_channel,RXCount);
-    if ((rxmsg.id & CAN_ERR_FLAG) == CAN_ERR_FLAG){
-      if (current_channel == 0) ErrorCount0++;
-      else if (current_channel == 1) ErrorCount1++;
-      else if (current_channel == 2) ErrorCount2++;
-      RED_LED_state = !RED_LED_state;                       
-      digitalWrite(RED_LED,RED_LED_state);  
+  if (recording) load_buffer();
+  if (stream) printFrame(rxmsg,current_channel,RXCount);
+  if ((rxmsg.id & CAN_ERR_FLAG) == CAN_ERR_FLAG){
+    if (current_channel == 0) ErrorCount0++;
+    else if (current_channel == 1) ErrorCount1++;
+    else if (current_channel == 2) ErrorCount2++;
+    RED_LED_state = !RED_LED_state;                       
+    digitalWrite(RED_LED,RED_LED_state);  
+  }
+  else if ((rxmsg.id & 0x00DAF900) == 0x00DAF900){
+    if ((rxmsg.buf[0] & 0xF0) == 0x10){ // First frame
+      txmsg.len = 3;
+      txmsg.id = 0x18DA00F9;
+      txmsg.buf[0] = 0x30; //Clear to send
+      txmsg.buf[1] = 0x00; // A Block Size of zero indicates the sender does not have to send a flow
+                           // control message for subsequent bytes
+      txmsg.buf[2] = 0x00; // Separation time in milliseconds
+      if (current_channel == 0) send_Can0_message(txmsg);
+      else if (current_channel == 1) send_Can1_message(txmsg);
+      else if (current_channel == 2) send_Can2_message(txmsg);
     }
-    else if ((rxmsg.id & 0x00DAF900) == 0x00DAF900){
-      if ((rxmsg.buf[0] & 0xF0) == 0x10){ // First frame
-        txmsg.len = 3;
-        txmsg.id = 0x18DA00F9;
-        txmsg.buf[0] = 0x30; //Clear to send
-        txmsg.buf[1] = 0x00; // A Block Size of zero indicates the sender does not have to send a flow
-                             // control message for subsequent bytes
-        txmsg.buf[2] = 0x00; // Separation time in milliseconds
-        if (current_channel == 0) send_Can0_message(txmsg);
-        else if (current_channel == 1) send_Can1_message(txmsg);
-        else if (current_channel == 2) send_Can2_message(txmsg);
-      }
-    }
+  }
 }
 
 void loop(void) {
@@ -1005,63 +998,110 @@ void loop(void) {
   
   if (Serial.available() >= 2) {
     commandString = Serial.readStringUntil('\n');
-    if (commandString.equalsIgnoreCase("HEX"))          print_hex();
-    else if (commandString.equalsIgnoreCase("BIN"))     stream_binary(current_file_name);
-    else if (commandString.startsWith("DEL ")){
-      char delete_file_name[13];
-      commandString.remove(0,4);
-      commandString.toCharArray(delete_file_name,13);
-      delete_file(delete_file_name);
-    }
-    else if (commandString.equalsIgnoreCase("STOP"))       turn_recording_off();
-    else if (commandString.equalsIgnoreCase("START"))      turn_recording_on();
-    else if (commandString.equalsIgnoreCase("NEW"))        close_binFile();
-    else if (commandString.equalsIgnoreCase("DF"))         sd_capacity();
-    else if (commandString.equalsIgnoreCase("LS"))         list_files();
-    else if (commandString.equalsIgnoreCase("LS -A"))      list_files_a();
-    else if (commandString.equalsIgnoreCase("FORMAT"))     format_sd_card();
-    else if (commandString.equalsIgnoreCase("BAUD"))       display_baud_rate();
-    else if (commandString.equalsIgnoreCase("ERRORS"))     display_error_count();
-    else if (commandString.equalsIgnoreCase("STREAM ON"))  turn_streaming_on();
-    else if (commandString.equalsIgnoreCase("STREAM OFF")) turn_streaming_off();
-    else if (commandString.equalsIgnoreCase("REQUEST ON")) turn_requests_on();
-    else if (commandString.equalsIgnoreCase("REQUEST OFF"))turn_requests_off();
-    else if (commandString.startsWith("baudRate")){
-      char stream_file_name[13]; 
-      strcpy(stream_file_name,"baudRate.txt");
-      stream_text(stream_file_name);
-    }
-    else if (commandString.startsWith(brand_name)){
-      char stream_file_name[13]; 
-      commandString.toCharArray(stream_file_name,13);
-      stream_binary(stream_file_name);     
-    }
-    else if (commandString.startsWith("ID ")){
-      commandString.remove(0,3);
-      commandString.toCharArray(logger_name,4);
-      EEPROM.put(EEPROM_DEVICE_ID_ADDR,logger_name);
-    }
-    else if (commandString.equalsIgnoreCase("HELP")){
-      Serial.println("List of available commands:");
-      Serial.println("HEX   (Print the latest log file in HEX, recording needs to be off)");
-      Serial.println("BIN   (Print the latest log file in BIN ,recording needs to be off)");
-      Serial.println("DEL [file-name.bin]   (Delete the chosen file in the SD card)");
-      Serial.println("STOP   (Turn recording off)");
-      Serial.println("START   (Turn recording on)");
-      Serial.println("NEW   (Start a new log file)");
-      Serial.println("DF    (Show SD card capacity)");
-      Serial.println("LS    (List files in the SD card)");
-      Serial.println("LS -A   (List files in the SD card with time stamp)");
-      Serial.println("FORMAT    (Format the SD card)");
-      Serial.println("BAUD    (Display current baudrate on the channels)");
-      Serial.println("ERRORS    (Display error count on the channels)");
-      Serial.println("REQUEST ON  (Turn requests on)");
-      Serial.println("REQUEST OFF   (Turn request off)");
-      Serial.println("baudRate    (Show the baudrate in each log file)");
-      Serial.println("ID [Version + Serial Number]    (Change device version and serial number, ID 201 means version 2 serial number 01)");
-    }
-    else {
-      Serial.println(("Unknown Command"));
+    commandString.toCharArray(command_buffer, COMMAND_BUFFER_LEN);
+    // Count the number of valid characters
+    uint8_t j = 0;
+    while ((isAlphaNumeric(command_buffer[j]) or command_buffer[j] == ' ') and j < COMMAND_BUFFER_LEN) j++;
+    if (commandString.length() == j){ // check to make sure no non-ascii inputs are being interpreted 
+      memset(command_buffer,0,COMMAND_BUFFER_LEN);
+      if      (commandString.equalsIgnoreCase("HEX"))        print_hex();
+      else if (commandString.equalsIgnoreCase("BIN"))        stream_binary(current_file_name);
+      else if (commandString.equalsIgnoreCase("STOP"))       turn_recording_off();
+      else if (commandString.equalsIgnoreCase("START"))      turn_recording_on();
+      else if (commandString.equalsIgnoreCase("NEW"))        close_binFile();
+      else if (commandString.equalsIgnoreCase("DF"))         sd_capacity();
+      else if (commandString.equalsIgnoreCase("LS"))         list_files();
+      else if (commandString.equalsIgnoreCase("LS A"))       list_files_a();
+      else if (commandString.equalsIgnoreCase("FORMAT"))     format_sd_card();
+      else if (commandString.equalsIgnoreCase("BAUD"))       display_baud_rate();
+      else if (commandString.equalsIgnoreCase("ERRORS"))     display_error_count();
+      else if (commandString.equalsIgnoreCase("STREAM ON"))  turn_streaming_on();
+      else if (commandString.equalsIgnoreCase("STREAM OFF")) turn_streaming_off();
+      else if (commandString.equalsIgnoreCase("REQUEST ON")) turn_requests_on();
+      else if (commandString.equalsIgnoreCase("REQUEST OFF"))turn_requests_off();
+      else if (commandString.startsWith("DEL ")){
+        char delete_file_name[13];
+        commandString.remove(0,4);
+        commandString.toCharArray(delete_file_name,13);
+        delete_file(delete_file_name);
+      }
+      else if (commandString.equalsIgnoreCase("BAUDRATE")){
+        char stream_file_name[13]; 
+        strcpy(stream_file_name,"baudRate.txt");
+        stream_text(stream_file_name);
+      }
+      else if (commandString.startsWith(brand_name)){
+        char stream_file_name[13]; 
+        commandString.toCharArray(stream_file_name,13);
+        stream_binary(stream_file_name);     
+      }
+      else if (commandString.startsWith("ID ")){
+        commandString.remove(0,3);
+        if (commandString.length() == 3){
+          commandString.toUpperCase();
+          commandString.toCharArray(logger_name,4);
+          EEPROM.put(EEPROM_DEVICE_ID_ADDR,logger_name);
+          Serial.print("Set Device ID to ");
+          Serial.println(logger_name);
+        }
+        else {
+          Serial.println("Improper ID Length");
+        }
+      }
+      else if (commandString.startsWith("COUNT")){
+        commandString.remove(0,6);
+        commandString.toUpperCase();
+        char input_count[4];
+        commandString.toCharArray(input_count,4);
+        memset(current_file,0,4);
+        memset(current_file,'0',3);
+        if (commandString.length() == 3) {
+          current_file[0] = input_count[0];
+          current_file[1] = input_count[1];
+          current_file[2] = input_count[2];
+        }
+        else if (commandString.length() == 2){
+          current_file[1] = input_count[0];
+          current_file[2] = input_count[1];
+        }
+        else if (commandString.length() == 1){
+          current_file[2] = input_count[0];
+        }
+        if (isFileNameValid(current_file)){
+          EEPROM.put(EEPROM_FILE_ID_ADDR,current_file);
+          Serial.print("Set current file to ");
+          Serial.println(current_file);
+        }
+        else
+        {
+          Serial.println("Not a valid file count.");
+        }
+      }    
+      else if (commandString.equalsIgnoreCase("HELP")){
+        Serial.println(F("List of available commands:"));
+        Serial.println(F("HEX         (Stream the latest log file in printable hexadecimal)"));
+        Serial.println(F("BIN         (Stream the latest log file in binary format to the serial port)"));
+        Serial.println(F("DEL [file-name.bin] (Delete the chosen file in the SD card)"));
+        Serial.println(F("STOP        (Turn recording off)"));
+        Serial.println(F("START       (Turn recording on)"));
+        Serial.println(F("NEW         (Start a new log file)"));
+        Serial.println(F("DF          (Show SD card capacity)"));
+        Serial.println(F("LS          (List files in the SD card)"));
+        Serial.println(F("LS A        (List files in the SD card with time stamp)"));
+        Serial.println(F("FORMAT      (Format the SD card)"));
+        Serial.println(F("BAUD        (Display current baudrate on the channels)"));
+        Serial.println(F("ERRORS      (Display error count on the channels)"));
+        Serial.println(F("REQUEST ON  (Turn requests on)"));
+        Serial.println(F("REQUEST OFF (Turn request off)"));
+        Serial.println(F("STREAM ON   (Start sending interpreted CAN Frames to the Serial port)"));
+        Serial.println(F("STREAM OFF  (Stop sending interpreted CAN Frames to the Serial port)"));
+        Serial.println(F("BAUDRATE    (Show the baudrate in each log file)"));
+        Serial.println(F("COUNT [abc] (Set the file index to a 3 digit alphanumeric code abc)"));
+        Serial.println(F("ID [Vxx]    (Change device version [V] and serial number [xx]; e.g. ID 201 means version 2 serial number 01)"));
+      }
+      else {
+        Serial.println(("Unknown Command"));
+      }
     }
     Serial.clear();
   }
@@ -1078,9 +1118,9 @@ void sd_capacity(){
   uint32_t cluster_count = sd.clusterCount();
   uint32_t free_cluster_count = sd.freeClusterCount();
    // Check for free space on the card.
-  Serial.print("SD Total Cluster Count: ");
+  Serial.print(F("SD Total Cluster Count: "));
   Serial.println(cluster_count);
-  Serial.print("SD Free Cluster Count: ");
+  Serial.print(F("SD Free Cluster Count: "));
   Serial.println(free_cluster_count);
   Serial.print(F("Sectors per cluster: "));
   Serial.println(sectors_per_cluster);
@@ -1091,15 +1131,21 @@ void sd_capacity(){
 }
 
 void turn_requests_on(){
+  send_request_timer = 0;
   send_requests = true;
+  Can0.setListenOnly(false);
+  Can1.setListenOnly(false);
   Serial.println("Send Requests On");
 }
 
 void turn_requests_off(){
   send_requests = false;
   send_iso_requests = false;
+  Can0.setListenOnly(true);
+  Can1.setListenOnly(true);
   Serial.println("Send Requests Off");
 }
+
 void turn_recording_on(){
   recording = true;
   Serial.println("Recording On");
@@ -1125,7 +1171,7 @@ void display_baud_rate(){
   Serial.println(Can0.baud_rate);
   Serial.print("Can1 bitrate is set to ");
   Serial.println(Can1.baud_rate);
-  Serial.print("Can1 bitrate is set to ");
+  Serial.print("Can2 bitrate is set to ");
   Serial.println("250000"); // Change this once it is adjustable.
 }
 
