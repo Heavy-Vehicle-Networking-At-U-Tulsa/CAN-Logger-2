@@ -478,11 +478,9 @@ void dateTime(uint16_t* FSdate, uint16_t* FStime) {
 void send_Can2_message(CAN_message_t &txmsg){
   if (TXTimer2 >= TX_MESSAGE_TIME){
     //Send message in format: ID, Standard (0) or Extended ID (1), message length, txmsg
-    digitalWrite(SILENT_2,LOW);
     Can2.sendMsgBuf(txmsg.id, 1, txmsg.len, txmsg.buf);  
     TXCount2++;
     TXTimer2 = 0;
-    digitalWrite(SILENT_2,HIGH);
   }  
 }
 
@@ -494,23 +492,18 @@ void send_Can2_message(CAN_message_t &txmsg){
 void send_Can0_message(CAN_message_t &txmsg){
   if (TXTimer0 >= TX_MESSAGE_TIME){    
     //Send message in FlexCAN format
-    digitalWrite(SILENT_0,LOW);
     Can0.write(txmsg);
     TXCount0++;
-    TXTimer0 = 0;
-    digitalWrite(SILENT_0,HIGH);
-    
+    TXTimer0 = 0;   
   }
 }    
 
 void send_Can1_message(CAN_message_t &txmsg){
-  if (TXTimer1 >= TX_MESSAGE_TIME){    
+  if (TXTimer1 >= TX_MESSAGE_TIME){ // Keep from flooding the bus.   
     //Send message in FlexCAN format
-    digitalWrite(SILENT_1,LOW);
     Can1.write(txmsg);
     TXCount1++;
     TXTimer1 = 0;
-    digitalWrite(SILENT_1,HIGH);
   }
 }
 
@@ -711,8 +704,7 @@ void led_blink_routines(){
 }
 
 void myClickFunction(){
-    send_request_timer = 0;
-    send_requests = true;
+    turn_requests_on();
 }
 
 void myDoubleClickFunction(){
@@ -1139,13 +1131,18 @@ void sd_capacity(){
 }
 
 void turn_requests_on(){
+  send_request_timer = 0;
   send_requests = true;
+  Can0.setListenOnly(false);
+  Can1.setListenOnly(false);
   Serial.println("Send Requests On");
 }
 
 void turn_requests_off(){
   send_requests = false;
   send_iso_requests = false;
+  Can0.setListenOnly(true);
+  Can1.setListenOnly(true);
   Serial.println("Send Requests Off");
 }
 
