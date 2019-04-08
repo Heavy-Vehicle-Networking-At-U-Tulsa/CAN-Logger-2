@@ -738,7 +738,7 @@ void setup(void) {
   //Set High to prevent transmission for the CAN TXRX
   digitalWrite(SILENT_0,LOW); 
   digitalWrite(SILENT_1,LOW);
-  digitalWrite(SILENT_2,HIGH);
+  digitalWrite(SILENT_2,LOW);
 
   // Setup chip select pin for the MCP2515
   pinMode(CS_CAN, OUTPUT);
@@ -770,7 +770,7 @@ void setup(void) {
   
   // Select the CAN on J1939 Pins F and G
   pinMode(CAN_SWITCH,OUTPUT);
-  digitalWrite(CAN_SWITCH,LOW);
+  digitalWrite(CAN_SWITCH,HIGH);
 
   Serial.println("Starting CAN logger.");
 
@@ -992,7 +992,7 @@ void loop(void) {
     }
     else
     {
-      send_passes = 0;
+      send_iso_passes = 0;
       send_iso_requests = false;
     }
   }
