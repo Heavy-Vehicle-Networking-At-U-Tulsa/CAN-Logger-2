@@ -738,7 +738,7 @@ void setup(void) {
   //Set High to prevent transmission for the CAN TXRX
   digitalWrite(SILENT_0,LOW); 
   digitalWrite(SILENT_1,LOW);
-  digitalWrite(SILENT_2,HIGH);
+  digitalWrite(SILENT_2,LOW);
 
   // Setup chip select pin for the MCP2515
   pinMode(CS_CAN, OUTPUT);
