@@ -992,7 +992,7 @@ void loop(void) {
     }
     else
     {
-      send_passes = 0;
+      send_iso_passes = 0;
       send_iso_requests = false;
     }
   }
