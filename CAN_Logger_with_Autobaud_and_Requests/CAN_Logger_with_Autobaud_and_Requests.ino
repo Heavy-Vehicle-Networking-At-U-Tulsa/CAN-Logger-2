@@ -926,7 +926,7 @@ void loop(void) {
       if (send_request_timer > REQUEST_TIMING){
         send_request_timer = 0;
         txmsg.len = 3;
-        txmsg.id = 0x18EA00F9;
+        txmsg.id = 0x18EAFFF9;
         txmsg.buf[0] = (request_pgn[request_index] & 0x0000FF);
         txmsg.buf[1] = (request_pgn[request_index] & 0x00FF00) >> 8 ;
         txmsg.buf[2] = (request_pgn[request_index] & 0xFF0000) >> 16; //These are in reverse byte order.
@@ -956,6 +956,7 @@ void loop(void) {
       send_passes = 0;
       send_requests = false;
       send_iso_requests = true;
+      send_iso_request_timer = 0;
     }
   }
   else if (send_iso_requests)
@@ -964,7 +965,7 @@ void loop(void) {
       if (send_iso_request_timer > REQUEST_TIMING){
         send_iso_request_timer = 0;
         txmsg.len = 8;
-        txmsg.id = 0x18DA00F9;
+        txmsg.id = 0x18DAFFF9;
         txmsg.buf[0] = 0x02;
         txmsg.buf[1] = (iso_request[request_index] & 0x00FF) >> 0 ;
         txmsg.buf[2] = (iso_request[request_index] & 0xFF00) >> 8; //These are in reverse byte order.
@@ -975,7 +976,7 @@ void loop(void) {
         RED_LED_state = !RED_LED_state;                       
         digitalWrite(RED_LED,RED_LED_state);  
         request_index++;
-        if (request_index >= NUM_REQUESTS) {
+        if (request_index >= NUM_ISO_REQUESTS) {
           request_index = 0;
           send_iso_passes++;
           //shuffle
