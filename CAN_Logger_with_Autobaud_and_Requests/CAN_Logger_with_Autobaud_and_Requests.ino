@@ -770,7 +770,7 @@ void setup(void) {
   
   // Select the CAN on J1939 Pins F and G
   pinMode(CAN_SWITCH,OUTPUT);
-  digitalWrite(CAN_SWITCH,LOW);
+  digitalWrite(CAN_SWITCH,HIGH);
 
   Serial.println("Starting CAN logger.");
 
