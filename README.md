@@ -40,7 +40,7 @@ You may also need to remove the pre-installed FlexCAN_Library:
 ## Usage
 The following charts show the functionality of the CAN Logger 2 units. These charts are available as a pdf and include program flow and data structures.
 
-[NMFTA TU CAN Logger 2 Diagrams](docs/NMFTA_TU_CAN_Logger_2.pdf)
+[NMFTA TU CAN Logger 2 Diagrams](docs/NMFTA_TU_CAN_Logger_2 Block Diagrams.pdf)
 
 ## Logger Device Test Programs
 The test programs are in the `tests` directory
