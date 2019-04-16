@@ -60,7 +60,7 @@
 FastCRC32 CRC32;
 
 // EEPROM memory addresses for creating file names
-// The Address 0 and 1 are used for baud rates
+// The Address 0 and 1 are used for baud rates by the fork FlexCAN submodule -- see src/FlexCAN.h
 #define EEPROM_DEVICE_ID_ADDR  4 // 5, 6, 7=00
 #define EEPROM_FILE_ID_ADDR    8 // 9, 10, 11 ==00
 #define EEPROM_BRAND_NAME_ADDR 12 //13 and 14 ==00
@@ -116,7 +116,7 @@ char brand_name[3];
   
   
 // Setup the MCP2515 controller
-// Set CS to pin 15, according to schematics
+// See the CAN Logger 2 Schematic for the source pins
 #define CS_CAN 15
 MCP_CAN Can2(CS_CAN); 
 //variables for the CAN Message
