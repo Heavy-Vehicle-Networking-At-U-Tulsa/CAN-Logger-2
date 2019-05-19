@@ -5,6 +5,9 @@
 #define CS_CAN 15
 MCP_CAN CAN2(CS_CAN);                                     
 
+//Data to send
+byte txmsg[8];     //8 bytes
+
 //Set up timing variables
 #define TXPeriod2 100
 elapsedMillis TXTimer2;
@@ -34,8 +37,7 @@ void setup()
   CAN2.enOneShotTX();
   CAN2.setMode(MCP_NORMAL);
 }
-//Data to send
-byte txmsg[8];     //8 bytes
+
 
 void loop()
 {

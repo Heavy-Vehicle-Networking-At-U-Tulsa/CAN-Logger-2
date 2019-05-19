@@ -32,10 +32,8 @@ static CAN_message_t rxmsg1;
 //Set up timing variables (Use prime numbers so they don't overlap)
 #define TXPeriod0 149
 elapsedMillis TXTimer0;
-
 #define TXPeriod1 89
 elapsedMillis TXTimer1;
-
 
 //Create a counter to keep track of message traffic
 uint32_t TXCount0 = 0;
@@ -74,12 +72,11 @@ void printFrame(CAN_message_t rxmsg, uint8_t channel, uint32_t RXCount)
   Serial.println();
 }
 
-
 void setup() {
   // put your setup code here, to run once:
   //Set baudrate
-  Can1.begin(BAUDRATE250K);
   Can0.begin(BAUDRATE250K);
+  Can1.begin(BAUDRATE250K);
   
   //Set message extension, ID, and length
   txmsg0.ext = 1;
@@ -96,19 +93,11 @@ void setup() {
   pinMode(SILENT_2,OUTPUT);
   digitalWrite(SILENT_0,LOW);
   digitalWrite(SILENT_1,LOW);
-  digitalWrite(SILENT_2,LOW);
+  digitalWrite(SILENT_2,HIGH); // Pull this high since the MCPCAN is not used.
   
   pinMode(GREEN_LED_PIN,OUTPUT);
   pinMode(RED_LED_PIN,OUTPUT);
   pinMode(YELLOW_LED_PIN,OUTPUT);
-  
-  //The default filters exclude the extended IDs, so we have to set up CAN filters to allow those to pass.
-  CAN_filter_t allPassFilter;
-  allPassFilter.ext=1;
-  for (uint8_t filterNum = 0; filterNum < 8;filterNum++){ //only use half the available filters for the extended IDs
-   Can0.setFilter(allPassFilter,filterNum); 
-   Can1.setFilter(allPassFilter,filterNum); 
-  }
 }
 
 

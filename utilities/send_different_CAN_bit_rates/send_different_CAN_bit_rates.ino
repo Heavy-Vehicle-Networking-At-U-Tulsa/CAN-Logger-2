@@ -1,6 +1,8 @@
 //Include MCP and SPI library
 #include <mcp_can.h>
 #include <Bounce2.h>
+#include <FlexCAN.h>
+
 
 #define BUTTON_PIN 21
 
@@ -35,6 +37,60 @@ boolean green_LED_state;
 boolean red_LED_state;
 boolean yellow_LED_state;
 
+//Define message from FlexCAN library
+static CAN_message_t txmsg0;
+static CAN_message_t txmsg1;
+static CAN_message_t rxmsg0;
+static CAN_message_t rxmsg1;
+
+//Set up timing variables (Use prime numbers so they don't overlap)
+#define TXPeriod0 149
+elapsedMillis TXTimer0;
+
+#define TXPeriod1 89
+elapsedMillis TXTimer1;
+
+
+//Create a counter to keep track of message traffic
+uint32_t TXCount0 = 0;
+uint32_t TXCount1 = 0;
+uint32_t RXCount0 = 0;
+uint32_t RXCount1 = 0;
+
+//Define LED
+#define GREEN_LED_PIN 6
+#define RED_LED_PIN 14
+#define YELLOW_LED_PIN 5
+
+boolean GREEN_LED_state; 
+boolean RED_LED_state;
+boolean YELLOW_LED_state;
+
+//Define CAN TXRX Transmission Silent pins
+#define SILENT_0 39
+#define SILENT_1 38
+#define SILENT_2 37
+
+//Define default baudrate
+#define BAUDRATE125K 125000
+#define BAUDRATE250K 250000
+#define BAUDRATE666K 666666
+#define BAUDRATE500K 500000
+
+//A generic CAN Frame print function for the Serial terminal
+void printFrame(CAN_message_t rxmsg, uint8_t channel, uint32_t RXCount)
+{
+  char CANdataDisplay[50];
+  sprintf(CANdataDisplay, "%d %12lu %12lu %08X %d %d", channel, RXCount, micros(), rxmsg.id, rxmsg.ext, rxmsg.len);
+  Serial.print(CANdataDisplay);
+  for (uint8_t i = 0; i < rxmsg.len; i++) {
+    char CANBytes[4];
+    sprintf(CANBytes, " %02X", rxmsg.buf[i]);
+    Serial.print(CANBytes);
+  }
+  Serial.println();
+}
+
 void change_baud(){
   rate_index++;
   if (rate_index >= num_rates) rate_index = 0;
@@ -47,8 +103,9 @@ void change_baud(){
 }
 
 void setup_CAN(){
-  if(CAN0.begin(MCP_ANY, current_baud_rate, MCP_16MHZ) == CAN_OK) Serial.println("MCP2515 Initialized Successfully!");
-  else Serial.println("Error Initializing MCP2515...");
+  if(!CAN0.begin(MCP_ANY, current_baud_rate, MCP_16MHZ) == CAN_OK){
+    Serial.println("Error Initializing MCP2515...");
+  }
   CAN0.enOneShotTX();
   CAN0.setMode(MCP_NORMAL);
 }
@@ -64,7 +121,25 @@ void setup()
   pinMode(2,OUTPUT);
   digitalWrite(2,HIGH);
   //while(!Serial);
-  Serial.write("Starting CAN Send Test.");
+  Serial.println("Starting CAN Send Test.");
+
+  rate_index = 1;
+  current_baud_rate = baudrate_list[rate_index];
+  TX_ID = TX_ID_list[rate_index];
+  
+  Can0.begin(BAUDRATE250K);
+  Can1.begin(BAUDRATE500K);
+  Can0.setReportErrors(true);
+  Can1.setReportErrors(true);
+  
+   
+  // Enable transmission for the CAN TXRX
+  pinMode(SILENT_0,OUTPUT);
+  pinMode(SILENT_1,OUTPUT);
+  pinMode(SILENT_2,OUTPUT);
+  digitalWrite(SILENT_0,LOW);
+  digitalWrite(SILENT_1,LOW);
+  digitalWrite(SILENT_2,LOW);
   
   setup_CAN();
   
@@ -106,11 +181,29 @@ void loop()
     CAN0.sendMsgBuf(TX_ID, 1, 8, txmsg);  
 
     //Toggle LED light as messages are sent
-    green_LED_state = !green_LED_state;                       
-    digitalWrite(green_LED,green_LED_state);
-
+    change_baud();
     //Print on serial for every sent message
-    Serial.print("Message Sent: ");
-    Serial.println(TXCount);
+    //Serial.print("Message Sent: ");
+    //Serial.println(TXCount);
+    Serial.print("Can0 REC count:");
+    Serial.println(Can0.readREC());
+    Serial.print("Can1 REC count:");
+    Serial.println(Can1.readREC());
+   
+  
+  }
+  if (Can0.available()) {
+    Can0.read(rxmsg0);
+    printFrame(rxmsg0,0,RXCount0++);
+    //Toggle the LED
+    GREEN_LED_state = !GREEN_LED_state;
+    digitalWrite(GREEN_LED_PIN,GREEN_LED_state);
+  }
+  if (Can1.available()) {
+    Can1.read(rxmsg1);
+    printFrame(rxmsg1,1,RXCount1++);
+    //Toggle the LED
+    GREEN_LED_state = !GREEN_LED_state;
+    digitalWrite(GREEN_LED_PIN,GREEN_LED_state);
   }
 }
